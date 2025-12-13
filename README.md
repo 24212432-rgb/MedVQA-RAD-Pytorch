@@ -142,6 +142,9 @@ How it works:
 ├── main_baseline.py             # Baseline training entry
 ├── main_advanced.py             # Advanced “specialist” training entry
 ├── requirements.txt
+└── data
+    ├── VQA_RAD Image Folder/               # Dataset images
+    ├── VQA_RAD Dataset Public.json         # Dataset
 └── src/
     ├── config.py                # paths + hyperparameters
     ├── dataset.py               # baseline dataset (uses phrase_type for train/test)
