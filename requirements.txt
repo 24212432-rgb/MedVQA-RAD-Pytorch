@@ -1,0 +1,8 @@
+torch
+torchvision
+transformers
+pillow
+matplotlib
+sentence-transformers
+numpy
+scikit-learn
