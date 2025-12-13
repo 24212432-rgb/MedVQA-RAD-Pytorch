@@ -142,8 +142,6 @@ How it works:
 ├── main_baseline.py             # Baseline training entry
 ├── main_advanced.py             # Advanced “specialist” training entry
 ├── requirements.txt
-├── assets/
-│   └── performance_table.png    # (optional) results figure shown in README
 └── src/
     ├── config.py                # paths + hyperparameters
     ├── dataset.py               # baseline dataset (uses phrase_type for train/test)
