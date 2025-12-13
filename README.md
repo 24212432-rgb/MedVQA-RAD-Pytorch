@@ -1,11 +1,6 @@
 # MedVQA-RAD — Baseline vs Specialist Seq2Seq w/ Attention (PyTorch)
 
 > **Medical Visual Question Answering (Med-VQA)** on **VQA-RAD**  
-> Course project for **WOA7015 Advanced Machine Learning (Universiti Malaya)**.
-
-<p align="center">
-  <img src="assets/performance_table.png" alt="Performance Table" width="820">
-</p>
 
 ## 🧭 What is this?
 
