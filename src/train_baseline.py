@@ -71,7 +71,8 @@ def train_model(model, train_loader, test_loader, config):
         if test_acc > best_test_acc:
             best_test_acc = test_acc
             torch.save(model.state_dict(), "medvqa_baseline_best.pth")
-            print(f"✅ 保存最佳模型 (Epoch {epoch}, Test Acc={best_test_acc:.4f})\n")
+            print(f"✅ Save the best model (Epoch {epoch}, Test Acc={best_test_acc:.4f})\n")
     # Training completed. Save the model of the last round.
     torch.save(model.state_dict(), "medvqa_baseline_last.pth")
-    print("训练完成！最佳测试集准确率: {:.4f}".format(best_test_acc))
+    print("Training completed! Best test set accuracy: {:.4f}".format(best_test_acc))
+
