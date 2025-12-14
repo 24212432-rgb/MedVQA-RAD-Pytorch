@@ -51,11 +51,183 @@ pip install -r requirements.txt
 
 2. Download VQA-RAD and place it under `data/` (see [Dataset Preparation](#dataset-preparation))
 
-3. Run the Devil → Rehab curriculum pipeline
+## How to Run
+
+### Option A: Google Colab Workflow (Recommended)
+
+We recommend **Google Colab** for training (GPU).  
+To reproduce the full experiment pipeline, run the scripts **in the exact order** below:
+
+1) `main_advanced_1.py`  
+2) `main_advanced_2.py`  
+3) `main_advanced_3.py`  
+4) *(Optional)* `run_strategy.py` (Reinforcement + Rehab Curriculum)
+
+---
+
+#### 0) Colab Setup (GPU + Drive)
+In Colab:
+- **Runtime → Change runtime type → GPU**
+
+Then run:
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Go to your project folder in Drive
+%cd /content/drive/MyDrive/MedVQA-Curriculum
+
+# Install dependencies
+!pip install -r requirements.txt
+```
+
+✅ Before training, confirm your dataset is placed correctly (see **Dataset Preparation**).  
+By default, the code reads paths from `src/config.py`.
+
+---
+
+### Execution Pipeline (Run in Order)
+
+#### Step 1 — `main_advanced_1.py` (Foundation Training / Stability First)
+```bash
+!python main_advanced_1.py
+```
+
+**What this step does**
+- Trains the advanced Seq2Seq VQA model with a **stability-first** strategy.
+- Builds a strong initial checkpoint by learning a balanced mapping between images, questions, and answers.
+
+**Why it matters**
+- This is the **base stage**. You should not apply aggressive curriculum or boosting before the model learns a stable foundation.
+
+**Expected output**
+- A best checkpoint saved during training (typical file name): `medvqa_13best.pth`
+
+✅ **Checkpoint alignment (required for Step 2)**  
+Step 2 expects a specific filename. Create it like this:
+```bash
+!cp medvqa_13best.pth medvqa_advanced_bert_best.pth
+```
+
+---
+
+#### Step 2 — `main_advanced_2.py` (Open-ended Boost / Penalize Yes-No)
+```bash
+!python main_advanced_2.py
+```
+
+**What this step does**
+- Loads the foundation model (`medvqa_advanced_bert_best.pth`).
+- Applies a stronger training pressure toward **open-ended reasoning** by **down-weighting “yes/no” tokens** in the loss.
+- This reduces the tendency to answer everything as “yes/no” and encourages richer answers.
+
+**Why it matters**
+- Open-ended medical answers are harder and require more **image-grounded reasoning**.
+- This stage targets the common **Yes/No bias** problem.
+
+**Expected output**
+- A boosted checkpoint (typical file name): `medvqa_advanced_bert_final_boost.pth`
+
+✅ **Checkpoint alignment (required for Step 3)**  
+Step 3 expects `medvqa_final_boost.pth`. Create it like this:
+```bash
+!cp medvqa_advanced_bert_final_boost.pth medvqa_final_boost.pth
+```
+
+---
+
+#### Step 3 — `main_advanced_3.py` (Unfreeze Vision / CNN Fine-tuning)
+```bash
+!python main_advanced_3.py
+```
+
+**What this step does**
+- Loads the boosted checkpoint (`medvqa_final_boost.pth`).
+- **Unfreezes the ResNet visual backbone** and fine-tunes it with an **ultra-low learning rate**.
+- This adapts visual features from generic ImageNet patterns to radiology-specific cues.
+
+**Why it matters**
+- Fine-tuning the CNN too early can overfit (VQA-RAD is small).
+- Doing it after language/decoder stabilization often yields better generalization.
+
+**Expected output**
+- A stronger final checkpoint (typical file name): `medvqa_ultimate.pth`
+
+---
+
+#### Step 4 (Optional) — `run_strategy.py` (Devil → Rehab Curriculum Learning) 🏆
+```bash
+!python run_strategy.py
+```
+
+**What this step does**
+This script executes the **Devil-to-Rehab curriculum**:
+
+- **Phase A (Devil / Open-only):**  
+  Filters out all easy Yes/No samples and trains only on open-ended questions.  
+  Goal: maximize open-ended reasoning ability.
+
+- **Phase B (Rehab / Mixed):**  
+  Reintroduces the full training set with a **very low LR** to recover closed-ended performance without destroying open-ended gains.
+
+**Why it matters**
+- This is your **research contribution**: a curriculum strategy designed to reduce language bias and improve open-ended accuracy.
+
+**Expected outputs**
+- `medvqa_specialist.pth` (best open-focused checkpoint from Devil phase)
+- `medvqa_ultimate_final.pth` (final model after Rehab phase)
+
+---
+
+### One-Cell Colab Run (Optional Convenience)
+If you prefer a single cell to run the whole pipeline:
 
 ```bash
-python run_strategy.py
+!python main_advanced_1.py
+!cp medvqa_13best.pth medvqa_advanced_bert_best.pth
+
+!python main_advanced_2.py
+!cp medvqa_advanced_bert_final_boost.pth medvqa_final_boost.pth
+
+!python main_advanced_3.py
+
+# Optional curriculum reinforcement
+!python run_strategy.py
 ```
+
+---
+
+### Should I explain every step in the README?
+**Yes — recommended (especially for a university assignment / interview).**
+
+Simply listing commands can look like a copied workflow.  
+Explaining **what each step does and why** shows:
+- you understand the experimental design,
+- your work is reproducible,
+- your contribution (Step 4) is clearly justified.
+
+A good practice is:
+- Keep **short explanations** in the README (like above).
+- Put deeper details in your final report or GitHub Wiki if needed.
+
+---
+
+<details>
+<summary><b>Troubleshooting (Common Issues)</b></summary>
+
+- **CUDA Out of Memory**
+  - Reduce `BATCH_SIZE` in `src/config.py` (e.g., 8 → 4).
+
+- **Dataset Not Found**
+  - Ensure `data/VQA_RAD Dataset Public.json` and `data/VQA_RAD Image Folder/` exist.
+  - Confirm `src/config.py` points to the correct paths.
+
+- **Checkpoint File Not Found**
+  - Use the `cp` commands shown above to align filenames between stages.
+
+</details>
+
 
 ---
 
