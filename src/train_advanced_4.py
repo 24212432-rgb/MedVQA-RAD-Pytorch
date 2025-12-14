@@ -43,7 +43,7 @@ class EvalHelper:
         return False
 
 def train_one_epoch(model, train_loader, criterion, optimizer, device):
-    """单轮训练函数"""
+    """Single-round training function"""
     model.train()
     total_loss = 0.0
     
@@ -66,7 +66,7 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device):
     return total_loss / len(train_loader)
 
 def evaluate_engine(model, test_loader, tokenizer, evaluator, device):
-    """纯粹的评估引擎，不含任何训练逻辑"""
+    """Pure evaluation engine, without any training logic"""
     model.eval()
     closed_correct = 0; closed_total = 0
     open_correct = 0; open_total = 0
@@ -79,10 +79,10 @@ def evaluate_engine(model, test_loader, tokenizer, evaluator, device):
         for images, questions, answers_seq in test_loader:
             images, questions = images.to(device), questions.to(device)
             
-            # 使用生成模式
+            # Use the generation mode
             gen_ids = model.generate_answer(images, questions, bos_idx, eos_idx)
             
-            # 批次解码
+            # Batch decoding
             for j in range(len(gen_ids)):
                 pred_str = tokenizer.decode(gen_ids[j], skip_special_tokens=True)
                 gt_str = tokenizer.decode(answers_seq[j], skip_special_tokens=True)
@@ -97,8 +97,9 @@ def evaluate_engine(model, test_loader, tokenizer, evaluator, device):
                     open_total += 1
                     if is_correct: open_correct += 1
                 
-                # 收集少量 Open 题的正确案例用于展示
+                # Collect a few correct examples of Open questions for demonstration purposes
                 if not is_closed and is_correct and len(debug_samples) < 3:
                     debug_samples.append(f"GT: {gt_str} | Pred: {pred_str}")
+
 
     return closed_correct, closed_total, open_correct, open_total, debug_samples
