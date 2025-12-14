@@ -196,22 +196,6 @@ If you prefer a single cell to run the whole pipeline:
 !python run_strategy.py
 ```
 
----
-
-### Should I explain every step in the README?
-**Yes — recommended (especially for a university assignment / interview).**
-
-Simply listing commands can look like a copied workflow.  
-Explaining **what each step does and why** shows:
-- you understand the experimental design,
-- your work is reproducible,
-- your contribution (Step 4) is clearly justified.
-
-A good practice is:
-- Keep **short explanations** in the README (like above).
-- Put deeper details in your final report or GitHub Wiki if needed.
-
----
 
 <details>
 <summary><b>Troubleshooting (Common Issues)</b></summary>
