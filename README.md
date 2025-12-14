@@ -1,10 +1,3 @@
-下面就是 **完整可用、格式正确、可以直接覆盖粘贴进 GitHub 的 `README.md` 全文**。
-你只要：在 GitHub 的 `README.md` 编辑页面里 **全选 → 删除 → 粘贴下面全部内容 → Commit changes** 就行。
-
-> ✅ 从第一行 `# 🏥 MedVQA-Curriculum` 开始复制，到最后一行结束（不用额外加任何东西）。
-
----
-
 # 🏥 MedVQA-Curriculum
 
 **Curriculum Learning for Medical Visual Question Answering (VQA-RAD)**
