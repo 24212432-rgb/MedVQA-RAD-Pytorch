@@ -14,7 +14,7 @@ class VQAModelAdvanced(nn.Module):
             vocab_size: int,
             embed_dim: int = 300,
             hidden_dim: int = 512,
-            dropout_p: float = 0.3,  # <--- New parameter: Receive 0.3 sent by main.py
+            dropout_p: float = 0.3,  # <--- 新增参数：接收 main.py 传来的 0.3
             embedding_matrix=None,
             train_cnn: bool = False,
             max_dec_steps: int = 30,
@@ -31,23 +31,23 @@ class VQAModelAdvanced(nn.Module):
         except Exception:
             resnet = models.resnet50(pretrained=True)
 
-        # Remove the avgpool and fc layers, and retain the spatial features (B, 2048, 7, 7)
+        # 移除 avgpool 和 fc，保留空间特征 (B, 2048, 7, 7)
         modules = list(resnet.children())[:-2]
         self.resnet_features = nn.Sequential(*modules)
 
-        # Freeze the weights of the CNN (to prevent overfitting in small datasets)
+        # 冻结 CNN 权重 (防止小数据集过拟合)
         for param in self.resnet_features.parameters():
             param.requires_grad = train_cnn
 
-        # Image feature mapping 2048 -> hidden_dim
+        # 图像特征映射: 2048 -> hidden_dim
         self.v_proj = nn.Linear(2048, hidden_dim)
 
         # 2. Question Encoder (Embedding + LSTM)
         # ----------------------------------------------------------------
-        # Note: Although we are using the ID of BERT Tokenizer, for the sake of simplifying the training process, we are re-training the Embedding from scratch here.
+        # 注意：虽然用的是 BERT Tokenizer 的 ID，但为了简化训练，我们这里重头训练 Embedding
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
 
-        # Problem Encoder LSTM
+        # 问题编码器 LSTM
         self.enc_lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
 
         # 3. Answer Decoder (Attention + LSTM)
@@ -61,7 +61,7 @@ class VQAModelAdvanced(nn.Module):
         # Output Layer
         self.out_linear = nn.Linear(hidden_dim, vocab_size)
 
-        # Dropout (Key point! Prevent overfitting after data augmentation)
+        # Dropout (关键！防止数据增强后过拟合)
         self.dropout = nn.Dropout(p=dropout_p)
 
     def forward(self, images, questions, decoder_input):
