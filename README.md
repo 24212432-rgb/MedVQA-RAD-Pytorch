@@ -1,242 +1,309 @@
-# MedVQA-RAD — Baseline vs Specialist Seq2Seq w/ Attention (PyTorch)
+下面就是 **完整可用、格式正确、可以直接覆盖粘贴进 GitHub 的 `README.md` 全文**。
+你只要：在 GitHub 的 `README.md` 编辑页面里 **全选 → 删除 → 粘贴下面全部内容 → Commit changes** 就行。
 
-> **Medical Visual Question Answering (Med-VQA)** on **VQA-RAD**  
-
-## 🧭 What is this?
-
-This repo builds a **Medical Visual Question Answering** system: given a **radiology image** (X-ray / CT / MRI) and a **natural-language question**, the model outputs an answer.
-
-I implement and compare:
-
-- **Baseline (classification):** ResNet50 + LSTM classifier (optional GloVe)
-- **Advanced (generation):** ResNet50 spatial features + **Attention** + **Seq2Seq** decoder (tokenized with `bert-base-uncased`)
+> ✅ 从第一行 `# 🏥 MedVQA-Curriculum` 开始复制，到最后一行结束（不用额外加任何东西）。
 
 ---
 
-## ✨ Key contributions
+# 🏥 MedVQA-Curriculum
 
-- **Closed vs Open breakdown**: report accuracy separately for **Yes/No** and **descriptive** questions.
-- **Specialist Curriculum Learning (Phase 4)**: fine-tune on **open-ended** questions to reduce the “always answer yes” shortcut.
-- **Semantic-match evaluation** for generated answers: optional **SBERT similarity** check to tolerate small wording variations.
+**Curriculum Learning for Medical Visual Question Answering (VQA-RAD)**
+**Devil-to-Rehab Strategy · Anti-Leakage Split · Semantic Evaluation (SBERT Optional)**
 
----
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-orange)
+![Status](https://img.shields.io/badge/Status-Completed-success)
 
-## 🏆 Results (Highlights)
-
-**Best reported performance** (from my final experiments):
-
-| Model | Architecture | Total Accuracy | Closed Accuracy (Yes/No) | Open Accuracy (Descriptive) |
-|---|---|---:|---:|---:|
-| Baseline | ResNet50 + LSTM + (optional) GloVe | ~50.00% | 65.10% | 15.20% |
-| **Advanced (Ours)** | **ResNet50 (spatial) + Seq2Seq + Attention** *(BERT tokenizer IDs)* | **56.39%** | **72.63%** | **38.24%** |
-
-**Key takeaway:** the largest improvement is on **open-ended questions** (≈ **2.5×**), enabled by the **specialist open-only fine-tuning** stage.
-
-> ⚠️ Note on wording: this repo uses **`bert-base-uncased` tokenizer** to convert text to IDs, but the **text encoder is an Embedding + LSTM** (not a full BERT Transformer). See `src/model_advanced.py`.
+> This repository contains an end-to-end MedVQA research implementation (course/research project).
+> It focuses on improving **open-ended** medical VQA performance by using a strict **anti-leakage split** and a two-phase curriculum training strategy: **Devil → Rehab**.
 
 ---
 
-## 0) What you need (super explicit)
+## Table of Contents
 
-### Hardware
-- GPU recommended (training is much faster), but CPU works with smaller batch sizes.
-
-### Software
-- Python 3.9+ (recommended: **3.10**)
-- Install dependencies via `requirements.txt`
-
-### Data (not included)
-You must download and place the VQA-RAD files locally (see Section 2).
-
-### Optional: Pretrained checkpoints
-- Baseline saves:
-  - `medvqa_baseline_best.pth`
-  - `medvqa_baseline_last.pth`
-- Advanced:
-  - loads `medvqa_13new1.pth`
-  - saves `medvqa_13new2.pth` (best Open Acc during Phase 4)
+* [Overview](#overview)
+* [Quickstart](#quickstart)
+* [Key Contributions](#key-contributions)
+* [Method Summary](#method-summary)
+* [Results](#results)
+* [Dataset Preparation](#dataset-preparation)
+* [Installation](#installation)
+* [How to Run](#how-to-run)
+* [Outputs](#outputs)
+* [Reproducibility](#reproducibility)
+* [Project Structure](#project-structure)
+* [Suggested .gitignore](#suggested-gitignore)
+* [Notes & Limitations](#notes--limitations)
+* [Acknowledgments](#acknowledgments)
 
 ---
 
-## 1) Environment setup
+## Overview
 
-### Option A — pip (simple)
+Medical Visual Question Answering (MedVQA) requires a model to answer natural-language clinical questions based on radiology images.
+
+A common failure mode is **Yes/No bias**: models overfit to frequent short answers (“yes”, “no”) and under-learn image-grounded reasoning for open-ended questions.
+
+This project proposes a curriculum learning approach that intentionally **removes easy Yes/No supervision** first, forcing the model to learn stronger visual reasoning, and then reintroduces Yes/No questions to recover overall balance.
+
+---
+
+## Quickstart
+
+1. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### Option B — create a clean environment (recommended)
+2. Download VQA-RAD and place it under `data/` (see [Dataset Preparation](#dataset-preparation))
+
+3. Run the Devil → Rehab curriculum pipeline
+
 ```bash
-conda create -n medvqa python=3.10 -y
-conda activate medvqa
-pip install -r requirements.txt
+python run_strategy.py
 ```
 
 ---
 
-## 2) Data preparation (required)
+## Key Contributions
 
-This project reads paths from `src/config.py`, so your folder names should match exactly:
+### 1) Strict Anti-Leakage Train/Test Split
+
+Instead of relying on potentially leaky splits, we enforce a **deterministic split** with a fixed seed (Seed = **42**) and ensure the **test subset remains unseen** throughout training.
+
+This is implemented in `run_strategy.py` using a fixed RNG seed for reproducibility.
+
+### 2) Devil-to-Rehab Curriculum Learning (Two-Phase Training)
+
+* **Phase A — Devil Training (Open-only):**
+  Train *only on open-ended questions* by filtering out samples whose answers are `yes/no`. This encourages image-grounded reasoning.
+* **Phase B — Rehab Training (Mixed):**
+  Reintroduce all question types with a very low learning rate to restore Yes/No performance while keeping improved open-ended ability.
+
+### 3) Semantic Evaluation for Open-ended Answers (Optional SBERT)
+
+Open-ended answers can be semantically correct even with different wording.
+We provide an `EvalHelper` that supports:
+
+* normalization + substring checks
+* optional **Sentence-BERT** similarity matching (threshold = **0.85**) if `sentence-transformers` is installed.
+
+---
+
+## Method Summary
+
+### Architecture (High-level)
+
+* **Vision Encoder:** ImageNet-pretrained **ResNet** feature extractor
+* **Question Encoder:** Tokenization via **BERT tokenizer (`bert-base-uncased`)**, then Embedding + LSTM
+* **Answer Decoder:** Attention-based decoder with greedy generation (Seq2Seq)
+
+> Note: The code uses the BERT tokenizer for robust tokenization, but the question encoder is an Embedding+LSTM (not a full BERT encoder fine-tuning). This keeps training manageable on limited compute.
+
+---
+
+## Results
+
+Below are example results from our reported best run (Seed = 42, strict split).
+(Exact values may vary slightly depending on hardware and environment.)
+
+| Metric          | Baseline | Curriculum (Devil→Rehab) |       Gain |
+| --------------- | -------: | -----------------------: | ---------: |
+| Open Accuracy   |   31.18% |               **34.71%** | **+3.53%** |
+| Closed Accuracy |   68.42% |               **71.58%** | **+3.16%** |
+| Total Accuracy  |   50.83% |               **54.17%** | **+3.34%** |
+
+---
+
+## Dataset Preparation
+
+This project uses the **VQA-RAD** dataset.
+Due to copyright/licensing, **raw images are not included** in this repository.
+
+### Official Download Links
+
+* **OSF (official source):** [https://osf.io/89k6j/](https://osf.io/89k6j/)
+* **Backup (HuggingFace):** [https://huggingface.co/datasets/flaviagiammarino/vqa-rad](https://huggingface.co/datasets/flaviagiammarino/vqa-rad)
+
+### Expected Data Layout (Matches `src/config.py`)
+
+By default, `src/config.py` expects the following names/paths:
 
 ```text
 data/
 ├── VQA_RAD Dataset Public.json
-├── VQA_RAD Image Folder/
-│   ├── synpic12345.jpg
-│   ├── ...
-└── glove.840B.300d.txt          # (optional, Baseline only)
+└── VQA_RAD Image Folder/
+    ├── (all image files...)
 ```
 
-### Where to download
-VQA-RAD paper (and official data citation/OSF entry):
+### Steps
 
-```text
-https://www.nature.com/articles/sdata2018251
-https://doi.org/10.17605/OSF.IO/89KPS
+1. Download from OSF and extract.
+2. Put the JSON file into `data/`:
+
+   * `VQA_RAD Dataset Public.json`
+3. Put the image folder into `data/`:
+
+   * `VQA_RAD Image Folder/`
+
+> If you rename files/folders (e.g., `data/trainset.json` + `data/images/`), make sure you update `DATA_JSON_PATH` and `IMG_DIR_PATH` in `src/config.py`.
+
+---
+
+## Installation
+
+### 1) Create environment (recommended)
+
+```bash
+python -m venv .venv
+# Windows:
+# .venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
 ```
 
-GloVe embeddings (only if you want baseline with pre-trained word vectors):
+### 2) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Recommended `requirements.txt`
+
+(Keep this as a separate file in the repo root.)
 
 ```text
-https://nlp.stanford.edu/projects/glove/
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+sentence-transformers>=2.2.2
+pillow
+numpy
+tqdm
 ```
 
 ---
 
-## 3) Quickstart (run commands)
+## How to Run
 
-### 3.1 Train Baseline (ResNet50 + LSTM + optional GloVe)
+### A) Run the Curriculum Strategy (Main Entry)
+
+This executes the full **Devil → Rehab** pipeline:
+
+```bash
+python run_strategy.py
+```
+
+What it does:
+
+1. Loads VQA-RAD data and applies a strict **80/20 split** with Seed **42**.
+2. Builds the **Devil subset** by filtering out `yes/no` answers from the training split.
+3. **Phase A (Devil):** trains on open-only subset and saves `medvqa_specialist.pth` (best open performance during Phase A).
+4. **Phase B (Rehab):** trains on the full training set with very low LR and saves `medvqa_ultimate_final.pth`.
+
+### B) (Optional) Train Baseline
+
 ```bash
 python main_baseline.py
 ```
 
-Expected outputs (saved in repo root):
-- `medvqa_baseline_best.pth`
-- `medvqa_baseline_last.pth`
+This trains a simpler baseline model for comparison.
 
-Notes:
-- If `data/glove.840B.300d.txt` does **not** exist, the baseline will automatically fall back to **random embeddings** (so it still runs).
+### C) (Optional) Other Experiment Entries
 
----
+You may also find earlier experiment entrypoints:
 
-### 3.2 Train / Fine-tune Advanced Specialist model (Phase 4)
-```bash
-python main_advanced.py
-```
+* `main_advanced_1.py`
+* `main_advanced_2.py`
+* `main_advanced_3.py`
 
-Expected outputs:
-- `medvqa_13new2.pth` (saved whenever Open Accuracy reaches a new best)
-
-How it works:
-- The script will try to load **`medvqa_13new1.pth`** (warm-start checkpoint).
-- Then it runs **Phase 4 “Specialist” training** and evaluates after each epoch (prints Total / Closed / Open).
-
-✅ **To enable true open-only training**, set `only_open=True` inside `main_advanced.py` when building the training dataset.
+They represent intermediate development versions.
 
 ---
 
-## 4) Project structure
+## Outputs
+
+Training will typically generate model checkpoints (`.pth`) in the repo root, such as:
+
+* `medvqa_specialist.pth` (Phase A best)
+* `medvqa_ultimate_final.pth` (Final model after Phase B)
+
+> **Recommendation:** Do not commit `.pth` to GitHub unless required. Add `*.pth` into `.gitignore`.
+
+---
+
+## Reproducibility
+
+* Split seed is fixed (Seed = **42**) in the curriculum pipeline.
+* For stable reproduction, run in a consistent Python/PyTorch environment.
+* Semantic evaluation (SBERT) requires `sentence-transformers`. If not installed, evaluation falls back to strict/heuristic matching.
+
+---
+
+## Project Structure
+
+Current typical structure:
 
 ```text
 .
-├── main_baseline.py             # Baseline training entry
-├── main_advanced.py             # Advanced “specialist” training entry
-├── requirements.txt
-└── data
-    ├── VQA_RAD Image Folder/               # Dataset images
-    ├── VQA_RAD Dataset Public.json         # Dataset
+├── run_strategy.py
+├── main_baseline.py
+├── main_advanced_1.py
+├── main_advanced_2.py
+├── main_advanced_3.py
+├── evaluate_real.py
+├── data/
+│   ├── VQA_RAD Dataset Public.json
+│   └── VQA_RAD Image Folder/
 └── src/
-    ├── config.py                # paths + hyperparameters
-    ├── dataset.py               # baseline dataset (uses phrase_type for train/test)
-    ├── dataset_advanced.py       # seq2seq dataset + optional open-only filter
-    ├── glove_utils.py           # load glove.840B.300d.txt
-    ├── model_baseline.py        # ResNet50 + LSTM classifier
-    ├── model_advanced.py        # ResNet50 spatial + Attention + seq2seq decoder
-    ├── train_baseline.py        # baseline training + closed/open breakdown
-    └── train_advanced.py        # Phase-4 specialist training + semantic-match eval
+    ├── config.py
+    ├── dataset.py
+    ├── dataset_advanced.py
+    ├── model_baseline.py
+    ├── model_advanced.py
+    ├── glove_utils.py
+    ├── train_baseline.py
+    ├── train_advanced_1.py
+    ├── train_advanced_2.py
+    ├── train_advanced_3.py
+    └── train_advanced_4.py
 ```
 
 ---
 
-## 5) Method summary
+## Suggested .gitignore
 
-### Baseline (classification)
-- **Image encoder:** ResNet-50 (ImageNet pretrained)
-- **Question encoder:** word embedding + LSTM
-- **Answer head:** MLP classifier over answer vocabulary
+To keep your repo clean and avoid uploading large/private files, create a `.gitignore` in the repo root:
 
-### Advanced (generation)
-- **Image encoder:** ResNet-50 *spatial* feature map (49 regions)
-- **Question encoder:** tokenizer IDs → embedding → LSTM encoder
-- **Fusion:** **Attention** over image regions conditioned on question/decoder state
-- **Decoder:** LSTMCell autoregressively generates answer tokens
+```text
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
 
-### Specialist Curriculum Learning (Phase 4)
-To address the strong imbalance of Yes/No questions in Med-VQA datasets:
-- Phase 4 fine-tunes on **open-ended questions only** to force descriptive reasoning.
+# model checkpoints
+*.pth
 
----
-
-## 6) Evaluation details (Closed vs Open)
-
-A sample is treated as **Closed-ended** if the ground-truth answer is exactly:
-- `yes` or `no`
-
-Otherwise it is counted as **Open-ended**.
-
-For the advanced model, evaluation includes:
-- exact match / substring match
-- optional **SBERT semantic similarity** (threshold 0.85) if `sentence-transformers` is installed
-
----
-
-## 7) Repro tips (for stable results)
-
-Deep learning results can vary slightly due to randomness. If you want deterministic runs, you can set seeds at the top of `main_baseline.py` and `main_advanced.py`:
-
-```python
-import random, numpy as np, torch
-seed = 42
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+# dataset images (do not upload)
+data/VQA_RAD Image Folder/
+data/images/
 ```
 
 ---
 
-## 8) Troubleshooting
+## Notes & Limitations
 
-**(1) `FileNotFoundError: VQA_RAD Dataset Public.json`**
-- Ensure the file name and folder structure match Section 2.
+* **Research/Education use only. Not for clinical deployment.**
+* VQA-RAD is small; results may vary based on augmentation, fine-tuning, and evaluation criteria.
+* Open-ended evaluation is sensitive to matching rules:
 
-**(2) GloVe missing**
-- Baseline still runs (random embeddings), but results may differ from the reported GloVe baseline.
-
-**(3) `ModuleNotFoundError: No module named 'src'`**
-- Run scripts from the repository root (same level as `main_baseline.py`).
+  * strict string match vs semantic similarity can produce different accuracy.
 
 ---
 
-## 9) Citation
+## Acknowledgments
 
-If you use this repo, please cite:
-
-- Lau, J. J., et al. (2018). *VQA-RAD: A dataset for medical visual question answering*. Scientific Data.
-
-```bibtex
-@article{lau2018vqarad,
-  title={A dataset of clinically generated visual questions and answers about radiology images},
-  author={Lau, Jason J and Gayen, Soumya and Ben Abacha, Asma and Demner-Fushman, Dina},
-  journal={Scientific Data},
-  year={2018}
-}
-```
-
----
-
-## Disclaimer
-This project is for **research / educational purposes only** and is **not** a medical device.
-Do not use it for clinical decision making.
+* Dataset: **VQA-RAD** (download via OSF)
+* Libraries: PyTorch, Torchvision, HuggingFace Transformers, Sentence-Transformers
+* Thanks to the research community for MedVQA baselines and reproducible tooling.
