@@ -9,7 +9,7 @@ from src import config
 from src.dataset_advanced import VQARADSeqDataset
 from src.model_advanced import VQAModelAdvanced
 
-# ⚠️ 引用刚才建立的纯净工具箱
+# ⚠️ Refer to the pure toolbox that was just established.
 from src.train_advanced_4 import train_one_epoch, evaluate_engine, EvalHelper
 
 def main():
@@ -23,11 +23,11 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
     # ====================================================
-    # 0. 数据准备 (严防数据泄露的核心逻辑)
+    # 0. Data Preparation (The Core Logic for Preventing Data Leakage)
     # ====================================================
     print("\n[Step 0] Preparing Data...")
     
-    # 统一使用一套 Transform (训练用增强)
+    # Uniformly use one set of Transform (for training and enhancement)
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -37,14 +37,14 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     
-    # 测试用纯净 Transform
+    # Testing with pure Transform
     test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    # 1. 加载唯一的全量数据集
+    # 1. Load the sole complete dataset
     full_dataset_source = VQARADSeqDataset(
         json_path=config.DATA_JSON_PATH,
         img_dir=config.IMG_DIR_PATH,
@@ -52,8 +52,8 @@ def main():
         transform=train_transform, 
     )
 
-    # 2. 严格切分 80% 训练 / 20% 测试
-    # 使用 manual_seed(42) 锁死随机性，保证测试集永远是那一批人，绝对不泄露
+    # 2. Strictly split: 80% for training / 20% for testing
+    # Use manual_seed(42) to lock the randomness and ensure that the test set will always consist of that specific group of people, and absolutely no information will be leaked.
     train_len = int(0.8 * len(full_dataset_source))
     test_len = len(full_dataset_source) - train_len
     
@@ -62,26 +62,26 @@ def main():
         generator=torch.Generator().manual_seed(42)
     )
 
-    # 3. 构建 DataLoader
+    # 3. Build DataLoader
     
-    # [测试集 Loader]
-    # 小Trick: 虽然 test_subset 里包含的是 train_transform，但为了方便直接用即可
-    # 少量的数据增强反而能验证模型的鲁棒性
+    # [Test set Loader]
+    # Little Trick: Although the contents of test_subset are train_transform, for ease of use, we can directly use it.
+    # A small amount of data augmentation can actually verify the robustness of the model.
     test_loader = DataLoader(test_subset, batch_size=config.BATCH_SIZE, shuffle=False)
 
-    # [Rehab Loader (康复训练)]: 包含完整的 80% 训练集
+    # [Rehab Loader (Rehabilitation training)]: Including the complete 80% of the training set
     train_loader_rehab = DataLoader(train_subset, batch_size=config.BATCH_SIZE, shuffle=True)
 
-    # [Devil Loader (魔鬼特训)]: 
-    # 关键点！从 train_subset 的索引里，挑出只包含 Open 问题的索引
+    # [Devil Loader (Devil Training Program)]: 
+    # Key point! From the indices of the "train_subset", select only those that contain "Open" questions.
     print("   Creating Devil Subset (Filtering Open questions from Train Split)...")
     devil_indices = []
     
-    # 遍历训练集包含的所有索引 ID
+    # Traverse all the index IDs contained in the training set
     for idx in train_subset.indices:
-        item = full_dataset_source.data[idx] # 访问原始数据
+        item = full_dataset_source.data[idx] # Access to the original data
         ans = str(item['answer']).lower().strip()
-        # 如果不是 Yes/No，那就是 Open 问题，加入魔鬼名单
+        # If it's not Yes/No, then it's an open question. Add it to the blacklist.
         if ans not in ['yes', 'no']:
             devil_indices.append(idx)
             
@@ -94,11 +94,11 @@ def main():
 
 
     # ====================================================
-    # 1. 模型初始化 & 加载 Ultimate 模型
+    # 1. Model initialization & loading of the Ultimate model
     # ====================================================
     model = VQAModelAdvanced(len(tokenizer.vocab), hidden_dim=config.HIDDEN_DIM, dropout_p=0.3).to(device)
     
-    # 优先加载你的王牌模型 medvqa_ultimate.pth
+    # Prioritize loading your top-tier model： medvqa_ultimate.pth
     priority_paths = ["medvqa_ultimate.pth", "medvqa_final_boost.pth", "medvqa_13new.pth"]
     base_path = None
     
@@ -118,28 +118,28 @@ def main():
 
 
     # ====================================================
-    # Phase A: 魔鬼特训 (Devil Training)
-    # 目标：不惜一切代价提升 Open Acc
+    # Phase A: Devil Training Program(Devil Training)
+    # Objective: To enhance Open Acc at all costs
     # ====================================================
     print("\n" + "="*40)
     print("🔥 PHASE A: DEVIL TRAINING (Open Only)")
     print("   Strategy: Ignore Yes/No. Force Reasoning.")
     print("="*40)
 
-    # 解冻 CNN (让眼睛学会看病灶)
+    # Unfreeze CNN (Enable the eyes to learn to detect lesions)
     for param in model.resnet_features.parameters(): param.requires_grad = True
     
-    # 学习率 2e-5
+    # Learning rate 2e-5
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-2) 
     
     best_open_acc = 0.0
     specialist_path = "medvqa_specialist.pth"
 
-    for epoch in range(1, 11): # 跑 10 轮
-        # 核心：使用 Devil Loader (只包含 Open 问题)
+    for epoch in range(1, 11): # Run 10 rounds
+        #Core: Use Devil Loader (only including Open issues)
         loss = train_one_epoch(model, train_loader_devil, criterion, optimizer, device)
         
-        # 评估 (在全量测试集上测，Closed 分数肯定会掉，不要慌)
+        # Evaluation (Tested on the full test set. The Closed score will definitely drop. Don't panic.)
         c_corr, c_tot, o_corr, o_tot, samples = evaluate_engine(model, test_loader, tokenizer, evaluator, device)
         
         c_acc = c_corr/c_tot if c_tot else 0
@@ -160,27 +160,27 @@ def main():
 
 
     # ====================================================
-    # Phase B: 康复训练 (Rehab Training)
-    # 目标：保持 Open Acc，恢复 Closed Acc
+    # Phase B: Rehabilitation training (Rehab Training)
+    # Objective: Maintain Open Acc and restore Closed Acc
     # ====================================================
     print("\n" + "="*40)
     print("🏥 PHASE B: REHAB TRAINING (Balance Restore)")
     print("   Strategy: Add Yes/No back. Very Low LR.")
     print("="*40)
 
-    # 加载 Phase A 练出来的最好模型
+    # Load the best model trained in Phase A
     if os.path.exists(specialist_path):
         print("Loading Best Specialist Model...")
         model.load_state_dict(torch.load(specialist_path, map_location=device))
     
-    # 学习率极低 (5e-6)，只为找回记忆，不破坏刚学的 Open 能力
+    # The learning rate is extremely low (5e-6), solely aimed at retrieving memories without disrupting the newly acquired Open capabilities.
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-6, weight_decay=1e-2)
 
     best_total_acc = 0.0
     final_path = "medvqa_ultimate_final.pth"
 
-    for epoch in range(1, 11): # 再跑 10 轮
-        # 核心：使用 Rehab Loader (全量训练集)
+    for epoch in range(1, 11): # Run another 10 rounds
+        # Core: Use Rehab Loader (the complete training set)
         loss = train_one_epoch(model, train_loader_rehab, criterion, optimizer, device)
         
         c_corr, c_tot, o_corr, o_tot, samples = evaluate_engine(model, test_loader, tokenizer, evaluator, device)
@@ -192,7 +192,7 @@ def main():
         print(f"Rehab Epoch {epoch}/10 | Loss: {loss:.4f}")
         print(f"   >>> Acc: Total {t_acc:.2%} (Closed {c_acc:.2%} | Open {o_acc:.2%})")
         
-        # 保存逻辑：Phase B 看总分 (Total Acc)
+        # Saving logic: In Phase B, calculate the total score (Total Acc)
         if t_acc > best_total_acc:
             best_total_acc = t_acc
             torch.save(model.state_dict(), final_path)
@@ -204,4 +204,5 @@ def main():
     print("="*60)
 
 if __name__ == "__main__":
+
     main()
