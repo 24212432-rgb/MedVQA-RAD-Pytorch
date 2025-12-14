@@ -5,7 +5,7 @@ import string
 import os
 import time
 
-# --- 高级语义评估模块 ---
+# --- Advanced Semantic Evaluation Module ---
 try:
     from sentence_transformers import SentenceTransformer, util
 
@@ -47,7 +47,7 @@ class EvalHelper:
         return False
 
 
-# --- 核心训练函数 ---
+# --- Core training function ---
 def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -57,15 +57,15 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     print(f"   Goal: Build Foundation (Ep 1-15) -> Augment & Boost (Ep 16-45)")
     print(f"{'=' * 60}\n")
 
-    # 1. 智能权重加载
-    pretrained_path = "medvqa_advanced_bert_best.pth"  # 优先加载 BERT 版权重
+    # 1. Intelligent weight loading
+    pretrained_path = "medvqa_advanced_bert_best.pth"  # Prioritize loading the BERT weights
     loaded_flag = False
 
     if os.path.exists(pretrained_path):
         print(f"🔍 Checking checkpoint: {pretrained_path}")
         try:
             state_dict = torch.load(pretrained_path, map_location=device)
-            # 检查词表维度
+            # Check the dimensions of the vocabulary list
             if 'embedding.weight' in state_dict:
                 ckpt_vocab = state_dict['embedding.weight'].shape[0]
                 model_vocab = tokenizer.vocab_size
@@ -85,13 +85,13 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     else:
         print("🆕 No BERT checkpoint found. Starting from SCRATCH.")
 
-    # 2. 优化器配置
-    # BERT 词表很大，从头练建议用 5e-4 或 1e-3，如果震荡就调小
+    # 2. Optimizer configuration
+    # The BERT vocabulary is quite large. For training from scratch, it is recommended to use 5e-4 or 1e-3. If there is oscillation, then reduce the value.
     lr = 5e-4 if not loaded_flag else 1e-4
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
     print(f"🔧 Learning Rate: {lr}")
 
-    # 3. 训练循环 (45轮)
+    # 3. Training cycle (45 rounds)
     num_epochs = 45
     best_test_acc = 0.0
     evaluator = EvalHelper(device=device)
@@ -105,18 +105,18 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     for epoch in range(1, num_epochs + 1):
         start_time = time.time()
 
-        # --- 关键修改：动态权重策略 ---
+        # --- Key modification: Dynamic weighting strategy ---
         loss_weights = torch.ones(tokenizer.vocab_size).to(device)
 
-        # 🟢 Phase 1 (Epoch 1-15): 基础期
-        # 权重设为 1.0 (平衡)。
-        # 目的：让模型先学会 Yes/No，建立信心，把 Loss 降下来。
+        # 🟢 Phase 1 (Epoch 1-15): Basal period
+        # The weight is set to 1.0 (balanced).
+        # Objective: Let the model first learn "Yes/No", build confidence, and reduce the Loss.
         if epoch <= 15 and not loaded_flag:
             strategy = "Phase 1: Foundation (Balanced)"
             w = 1.0
-            # 🟢 Phase 2 (Epoch 16-45): 提升期
-        # 权重设为 0.5。
-        # 目的：基础打好了，开始适度惩罚 Yes/No，逼迫模型学难词。
+            # 🟢 Phase 2 (Epoch 16-45): Growth period
+        # The weight is set to 0.5.
+        # Objective: Once the foundation is laid, start applying moderate penalties (Yes/No) to force the model to learn difficult words.
         else:
             strategy = "Phase 2: Hybrid Boosting"
             w = 0.5
@@ -154,7 +154,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
         open_correct = 0;
         open_total = 0
 
-        debug_corrects = []  # 记录正确的 Open 答案
+        debug_corrects = []  # Record the correct Open answer
 
         with torch.no_grad():
             for images, questions, answers_seq in test_loader:
@@ -178,7 +178,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
                 if is_correct and not is_closed and len(debug_corrects) < 3:
                     debug_corrects.append(f"GT: {gt_str} | Pred: {pred_str}")
 
-        # 统计
+        # Statistics
         closed_acc = closed_correct / closed_total if closed_total else 0.0
         open_acc = open_correct / open_total if open_total else 0.0
         total_acc = (closed_correct + open_correct) / (closed_total + open_total) if (
@@ -193,10 +193,11 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
             print("   [✨ Open Success]:")
             for s in debug_corrects: print(f"    -> {s}")
 
-        # 保存
+        # Save
         if total_acc > best_test_acc:
             best_test_acc = total_acc
             torch.save(model.state_dict(), "medvqa_13best.pth")
             print(f"   🏆 New Best Saved! ({best_test_acc:.2%})")
+
 
     print(f"\n✅ Training Finished. Best Accuracy: {best_test_acc:.2%}")
