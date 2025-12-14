@@ -13,7 +13,7 @@ from src import config
 from src.dataset_advanced import VQARADSeqDataset
 from src.model_advanced import VQAModelAdvanced
 
-# 设置设备
+# Set up the equipment
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def visualize_result(image_tensor, question, answer, pred, is_correct, save_path):
@@ -178,4 +178,5 @@ def main():
         print("\n💪 Evaluation: Keep fighting. The model's generalization ability still has room for improvement.")
 
 if __name__ == "__main__":
+
     main()
