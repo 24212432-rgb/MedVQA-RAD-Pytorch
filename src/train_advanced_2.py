@@ -6,7 +6,7 @@ import string
 import os
 import time
 
-# --- 高级语义评估模块 ---
+# --- Advanced Semantic Evaluation Module ---
 try:
     from sentence_transformers import SentenceTransformer, util
     HAS_SBERT = True
@@ -53,7 +53,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     print(f"   Strategy: Load Best Model -> Penalize Yes/No (Weight 0.15)")
     print(f"{'='*60}\n")
 
-    # 1. 强制加载你刚才训练好的最佳模型
+    # 1. Force the loading of the best model you just trained
     pretrained_path = "medvqa_advanced_bert_best.pth"
     
     if os.path.exists(pretrained_path):
@@ -67,14 +67,14 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     else:
         print("🆕 No checkpoint found. Starting from scratch.")
 
-    # 2. 学习率：因为是微调，保持小一点，防止破坏已有的 Closed Acc
-    lr = 2e-4  # 稍微调小一点点，求稳
+    # 2. Learning rate: Since this is a fine-tuning process, keep it at a lower level to prevent disrupting the existing "Closed Acc" value.
+    lr = 2e-4  # Slightly reduce it a little bit to ensure stability.
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
     print(f"🔧 Learning Rate: {lr}")
 
-    # 3. 再训练 30 轮 (在现有 45 轮基础上)
+    # 3. Re-train for 30 more rounds (on top of the existing 45 rounds)
     num_epochs = 30 
-    best_test_acc = 0.0 # 重置一下，只保存比现在更好的
+    best_test_acc = 0.0 # Reset the settings and only save the ones that are better than the current ones.
     evaluator = EvalHelper(device=device)
     
     yes_ids = tokenizer.encode("yes", add_special_tokens=False) 
@@ -88,10 +88,10 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
         
         loss_weights = torch.ones(tokenizer.vocab_size).to(device)
         
-        # --- 🩸 核心策略修改 ---
-        # 既然 Closed 已经 72% 了，我们不需要再保护它了。
-        # 我们把 Yes/No 的权重设为极低的 0.15
-        # 这会迫使模型把注意力全部集中在 Open 问题上！
+        # --- 🩸 Core strategy modification ---
+        # Since Closed is already at 72%, we don't need to protect it anymore.
+        # We set the weights of "Yes" and "No" to an extremely low value of 0.15.
+        # This will force the model to focus all its attention on the Open questions!
         
         strategy = "🔥 Open Boost (Yes/No Wt=0.15)"
         w = 0.15 
@@ -148,7 +148,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
                     open_total += 1
                     if is_correct: open_correct += 1
                 
-                # 只打印 Open 问题的成功案例，给你信心
+                # Only print the successful cases of the "Open" questions, giving you confidence.
                 if is_correct and not is_closed and len(debug_corrects) < 5:
                     debug_corrects.append(f"GT: {gt_str} | Pred: {pred_str}")
 
@@ -165,11 +165,12 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
             print("   [✨ Open Success]:")
             for s in debug_corrects: print(f"    -> {s}")
 
-        # 只要 Open Acc 涨了，或者总分涨了，都保存
-        # 加上 open_acc > 0.2 的条件，防止保存那些严重偏科的模型
+        # As long as Open Acc goes up, or the total score increases, save it.
+        # Adding the condition that open_acc > 0.2, we can prevent the saving of those models that are severely biased.
         if total_acc > best_test_acc or open_acc > 0.25:
             if total_acc > best_test_acc: best_test_acc = total_acc
             torch.save(model.state_dict(), "medvqa_advanced_bert_final_boost.pth")
             print(f"   🏆 Saved (Boosted Open Accuracy)!")
+
 
     print(f"\n✅ Boosting Finished.")
