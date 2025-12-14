@@ -6,7 +6,7 @@ import string
 import os
 import time
 
-# --- 高级语义评估模块 ---
+# --- Advanced Semantic Evaluation Module ---
 try:
     from sentence_transformers import SentenceTransformer, util
     HAS_SBERT = True
@@ -71,19 +71,19 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
         print(f"❌ Error: File '{pretrained_path}' not found! Did you delete it?")
         return
 
-    # 2. 关键步骤：解冻 CNN (ResNet)
+    # 2. Key step: Unfreeze the CNN (ResNet)
     print("🔓 Unfreezing ResNet parameters for medical fine-tuning...")
     for param in model.resnet_features.parameters():
         param.requires_grad = True
     
-    # 3. 学习率：必须非常非常小 (1e-5)，否则会破坏刚学好的知识
+    # 3. Learning rate: It must be extremely small (1e-5), otherwise it will destroy the newly learned knowledge.
     lr = 1e-5 
     print(f"🔧 Learning Rate set to ULTRA LOW: {lr} (Safety Mode)")
     
-    # 注意：这里必须把 model.parameters() 传进去，包含刚解冻的 CNN 参数
+    # Note: Make sure to pass in model.parameters() here, including the CNN parameters that have just been unfrozen.
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
 
-    # 4. 再训练 20 轮 (精细打磨)
+    # 4. Re-train for 20 rounds (for fine-tuning)
     num_epochs = 20
     best_test_acc = 0.0 
     evaluator = EvalHelper(device=device)
@@ -97,7 +97,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     for epoch in range(1, num_epochs + 1):
         start_time = time.time()
         
-        # 保持对 Yes/No 的适度惩罚 (0.2)，让它不要忘记 Open
+        # Maintain a moderate penalty for "Yes/No" (0.2), so that it doesn't forget "Open"
         loss_weights = torch.ones(tokenizer.vocab_size).to(device)
         strategy = "👁️ CNN Fine-Tuning (LR=1e-5)"
         w = 0.2 
@@ -123,7 +123,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
             loss = criterion(scores.reshape(-1, scores.size(-1)), targets.reshape(-1))
             loss.backward()
             
-            # 梯度裁剪：保护 CNN 不被梯度爆炸摧毁
+            # Gradient Clipping: Protecting CNN from Being Destroyed by Gradient Explosion
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
             optimizer.step()
@@ -173,13 +173,14 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
             print("   [✨ Open Success]:")
             for s in debug_corrects: print(f"    -> {s}")
 
-        # 保存策略：只要有进步就保存
-        # 保存为最终的 Ultimate 版本
+        # Saving strategy: Save whenever there is progress.
+        # Save as the final Ultimate version
         if total_acc >= best_test_acc or open_acc > 0.30:
             if total_acc > best_test_acc: best_test_acc = total_acc
             
             save_name = "medvqa_ultimate.pth"
             torch.save(model.state_dict(), save_name)
             print(f"   🏆 Saved Ultimate Model: {save_name}")
+
 
     print(f"\n✅ All Training Finished.")
