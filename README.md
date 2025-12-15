@@ -250,7 +250,7 @@ By default, the code reads paths from `src/config.py`.
 - A best checkpoint saved during training (typical file name): `medvqa_13best.pth`
 
 ✅ **Checkpoint alignment (required for Step 2)**  
-Step 2 expects a specific filename. Create it like this:
+Step 2: If the corresponding.pth file is not obtained, then a specific file name is required. Please create it in the following manner:
 ```bash
 !cp medvqa_13best.pth medvqa_advanced_bert_best.pth
 ```
@@ -275,7 +275,7 @@ Step 2 expects a specific filename. Create it like this:
 - A boosted checkpoint (typical file name): `medvqa_advanced_bert_final_boost.pth`
 
 ✅ **Checkpoint alignment (required for Step 3)**  
-Step 3 expects `medvqa_final_boost.pth`. Create it like this:
+Step 3: If the corresponding.pth file is not obtained, then a specific file name is required. Please create it in the following manner:
 ```bash
 !cp medvqa_advanced_bert_final_boost.pth medvqa_final_boost.pth
 ```
@@ -329,11 +329,16 @@ This script executes the **Devil-to-Rehab curriculum**:
 If you prefer a single cell to run the whole pipeline:
 
 ```bash
+from google.colab import drive
+drive.mount('/content/drive')
+
+%cd /content/drive/MyDrive/(The name of the folder you named)
+
+!ls
+
 !python main_advanced_1.py
-!cp medvqa_13best.pth medvqa_advanced_bert_best.pth
 
 !python main_advanced_2.py
-!cp medvqa_advanced_bert_final_boost.pth medvqa_final_boost.pth
 
 !python main_advanced_3.py
 
