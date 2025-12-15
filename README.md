@@ -220,7 +220,10 @@ drive.mount('/content/drive')
 # Go to your project folder in Drive
 %cd /content/drive/MyDrive/MedVQA-Curriculum
 
-# Install dependencies
+# Check whether the contents of the folder you moved are correct.
+!ls
+
+# (If there is an error during the operation) Install dependencies
 !pip install -r requirements.txt
 ```
 
