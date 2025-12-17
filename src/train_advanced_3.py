@@ -185,3 +185,4 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
 
     print(f"\n✅ All Training Finished.")
 
+
