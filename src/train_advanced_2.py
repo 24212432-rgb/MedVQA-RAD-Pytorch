@@ -54,7 +54,7 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
     print(f"{'='*60}\n")
 
     # 1. Force the loading of the best model you just trained
-    pretrained_path = "medvqa_advanced_bert_best.pth"
+    pretrained_path = "medvqa_13best.pth"
     
     if os.path.exists(pretrained_path):
         print(f"🔍 Loading your best model (43%): {pretrained_path}")
@@ -174,3 +174,4 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
 
 
     print(f"\n✅ Boosting Finished.")
+
