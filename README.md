@@ -133,7 +133,7 @@ Due to copyright/licensing, **raw images are not included** in this repository.
 
 * **OSF (official source):** [https://osf.io/89k6j/](https://osf.io/89k6j/)
 * **Backup (HuggingFace):** [https://huggingface.co/datasets/flaviagiammarino/vqa-rad](https://huggingface.co/datasets/flaviagiammarino/vqa-rad)
-
+* **(selectable)glove.840B.300d:** ([https://huggingface.co/datasets/flaviagiammarino/vqa-rad](https://downloads.cs.stanford.edu/nlp/data/glove.840B.300d.zip))
 ### Expected Data Layout (Matches `src/config.py`)
 
 By default, `src/config.py` expects the following names/paths:
@@ -143,6 +143,8 @@ data/
 ├── VQA_RAD Dataset Public.json
 └── VQA_RAD Image Folder/
     ├── (all image files...)
+└── glove.840B.300d.txt
+
 ```
 
 ### Steps
