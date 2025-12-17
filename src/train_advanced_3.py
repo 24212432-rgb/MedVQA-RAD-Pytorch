@@ -50,12 +50,12 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
 
     print(f"\n{'='*60}")
     print(f"🚀 PHASE 3: UNFREEZE THE EYES (Fine-tuning CNN)")
-    print(f"   Strategy: Load 'medvqa_final_boost.pth' -> Unfreeze ResNet -> Ultra Low LR")
+    print(f"   Strategy: Load 'medvqa_advanced_bert_final_boost.pth' -> Unfreeze ResNet -> Ultra Low LR")
     print(f"{'='*60}\n")
 
-    # 1. 加载准确率的最新模型
+    # 1. Load the latest model of accuracy rate.
     # ---------------------------------------------------------
-    pretrained_path = "medvqa_final_boost.pth" 
+    pretrained_path = "medvqa_advanced_bert_final_boost.pth" 
     # ---------------------------------------------------------
     
     if os.path.exists(pretrained_path):
@@ -184,3 +184,4 @@ def train_model_seq(model, train_loader, test_loader, config, tokenizer):
 
 
     print(f"\n✅ All Training Finished.")
+
