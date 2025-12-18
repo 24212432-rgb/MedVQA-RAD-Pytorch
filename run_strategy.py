@@ -150,7 +150,7 @@ def main():
         print(f"   >>> Acc: Total {t_acc:.2%} (Closed {c_acc:.2%} | Open {o_acc:.2%})")
         if samples: print(f"   [Open Success]: {samples[0]}")
 
-        # 保存逻辑：Phase A 只在乎 Open Acc，只要 Open 涨了就保存
+        # Save logic: In Phase A, only the Open Acc is of concern. As long as Open rises, it will be saved.
         if o_acc > best_open_acc:
             best_open_acc = o_acc
             torch.save(model.state_dict(), specialist_path)
@@ -206,3 +206,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
