@@ -415,6 +415,7 @@ Current typical structure:
 ├── data/
 │   ├── VQA_RAD Dataset Public.json
 │   └── VQA_RAD Image Folder/
+│   └──glove.840B.300d.txt
 └── src/
     ├── config.py
     ├── dataset.py
