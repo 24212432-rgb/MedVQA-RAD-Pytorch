@@ -9,12 +9,12 @@ from src import config
 from src.dataset_advanced import VQARADSeqDataset
 from src.model_advanced import VQAModelAdvanced
 
-# ⚠️ Refer to the pure toolbox that was just established.
+# Refer to the pure toolbox that was just established.
 from src.train_advanced_4 import train_one_epoch, evaluate_engine, EvalHelper
 
 def main():
     print("="*60)
-    print("🚀 STRATEGY: CURRICULUM LEARNING (Devil -> Rehab)")
+    print(" STRATEGY: CURRICULUM LEARNING (Devil -> Rehab)")
     print("   Goal: Force Open learning, then recover Closed accuracy.")
     print("   Security: Strict Index Filtering to prevent Data Leakage.")
     print("="*60)
@@ -111,7 +111,7 @@ def main():
         print(f"\n[Step 1] Loading Base Model from: {base_path}")
         model.load_state_dict(torch.load(base_path, map_location=device), strict=False)
     else:
-        print("\n⚠️ No base model found. Starting from scratch (Not recommended).")
+        print("\nNo base model found. Starting from scratch (Not recommended).")
 
     evaluator = EvalHelper(device)
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
@@ -122,7 +122,7 @@ def main():
     # Objective: To enhance Open Acc at all costs
     # ====================================================
     print("\n" + "="*40)
-    print("🔥 PHASE A: DEVIL TRAINING (Open Only)")
+    print(" PHASE A: DEVIL TRAINING (Open Only)")
     print("   Strategy: Ignore Yes/No. Force Reasoning.")
     print("="*40)
 
@@ -154,9 +154,9 @@ def main():
         if o_acc > best_open_acc:
             best_open_acc = o_acc
             torch.save(model.state_dict(), specialist_path)
-            print(f"   💾 Saved Specialist Model! (New Best Open Acc: {o_acc:.2%})")
+            print(f"    Saved Specialist Model! (New Best Open Acc: {o_acc:.2%})")
 
-    print(f"\n✅ Phase A Complete. Best Open Acc: {best_open_acc:.2%}")
+    print(f"\n Phase A Complete. Best Open Acc: {best_open_acc:.2%}")
 
 
     # ====================================================
@@ -164,7 +164,7 @@ def main():
     # Objective: Maintain Open Acc and restore Closed Acc
     # ====================================================
     print("\n" + "="*40)
-    print("🏥 PHASE B: REHAB TRAINING (Balance Restore)")
+    print(" PHASE B: REHAB TRAINING (Balance Restore)")
     print("   Strategy: Add Yes/No back. Very Low LR.")
     print("="*40)
 
@@ -196,14 +196,15 @@ def main():
         if t_acc > best_total_acc:
             best_total_acc = t_acc
             torch.save(model.state_dict(), final_path)
-            print(f"   🏆 Saved Final Model! (Total: {t_acc:.2%} | Open: {o_acc:.2%})")
+            print(f"    Saved Final Model! (Total: {t_acc:.2%} | Open: {o_acc:.2%})")
 
     print("\n" + "="*60)
-    print("🎉 ALL DONE! STRATEGY EXECUTED.")
+    print(" ALL DONE! STRATEGY EXECUTED.")
     print(f"Final Model Saved to: {final_path}")
     print("="*60)
 
 if __name__ == "__main__":
 
     main()
+
 
