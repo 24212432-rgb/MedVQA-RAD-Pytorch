@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-import random  # 关键：使用 Python 原生 random
+import random  # Key: Use Python's native random
 from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from transformers import AutoTokenizer
@@ -10,7 +10,7 @@ from src import config
 from src.dataset_advanced import VQARADSeqDataset
 from src.model_advanced import VQAModelAdvanced
 
-# 引用纯净工具箱
+# Quote Pure Toolbox
 from src.train_advanced_4 import train_one_epoch, evaluate_engine, EvalHelper
 
 def main():
@@ -26,11 +26,11 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
     # ====================================================
-    # 0. 数据准备 (完美复刻 main_advanced.py 的切分)
+    # 0. Data Preparation (Perfectly replicate the splitting in main_advanced.py)
     # ====================================================
     print("\n[Step 0] Preparing Data (Replicating Original Split)...")
     
-    # 定义增强
+    # Definition Enhancement
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -46,10 +46,10 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    # 加载数据集 (为了方便，我们只加载一次，然后用 Subset 分配 Transform)
-    # 注意：这里我们用 test_transform 加载全量，
-    # 训练时虽然增强弱了一点，但为了逻辑对齐先这样，或者你也可以像原来一样加载两次
-    # 为了简化且保证 Index 对齐，我们加载一次源数据
+    # Load the dataset (for convenience, we only load it once and then use Subset to assign Transform)
+    # Here we use test_transform to load the full dataset.
+    # Although the training was slightly weakened, for logical alignment, let's do it this way for now. Or you can load it twice as before.
+    # To simplify and ensure the alignment of the Index, we load the source data once.
     full_dataset_source = VQARADSeqDataset(
         json_path=config.DATA_JSON_PATH,
         img_dir=config.IMG_DIR_PATH,
@@ -57,33 +57,33 @@ def main():
         transform=train_transform 
     )
     
-    #  关键修正：复刻你的 main_advanced.py 切分逻辑 
+    #  Key correction: Replicate the splitting logic of your main_advanced.py
     dataset_size = len(full_dataset_source)
     indices = list(range(dataset_size))
     
-    random.seed(42)  # 使用 Python 原生 random，和你原来一样
+    random.seed(42)  # Use Python's native random, just like you did before.
     random.shuffle(indices)
     
     split = int(0.8 * dataset_size)
     train_indices = indices[:split]
-    test_indices = indices[split:] # 这就是你模型从未见过的那些题
+    test_indices = indices[split:] # These are the questions that your model has never seen before.
     
-    # 创建子集
-    # 这里有点小遗憾：为了代码简洁，我们训练集和测试集暂时用了同一个 Transform (train_transform)
-    # 但这只会让测试分数略微变低（因为测试集也被增强了），而绝对不会虚高。这是安全的。
+    # Create a subset
+    # There is a minor drawback here: for the sake of code simplicity, we temporarily used the same Transform (train_transform) for both the training set and the test set.
+    # However, this will only slightly lower the test scores (since the test set has also been augmented), but it will never inflate them. This is safe.
     train_subset = Subset(full_dataset_source, train_indices)
     test_subset = Subset(full_dataset_source, test_indices)
 
-    # 构建 Loader
+    # structure Loader
     test_loader = DataLoader(test_subset, batch_size=config.BATCH_SIZE, shuffle=False)
     train_loader_rehab = DataLoader(train_subset, batch_size=config.BATCH_SIZE, shuffle=True)
 
-    # [Devil Loader]: 从 train_indices 里挑出 Open 问题
+    # [Devil Loader]: Select the Open questions from train_indices.
     print("   Creating Devil Subset (Filtering Open questions from Train Indices)...")
     devil_indices = []
     
-    for idx in train_indices: # 只遍历训练集的索引
-        item = full_dataset_source.data[idx] # 访问原始数据
+    for idx in train_indices: # Only traverse the indices of the training set.
+        item = full_dataset_source.data[idx] # Access the original data
         ans = str(item['answer']).lower().strip()
         if ans not in ['yes', 'no']:
             devil_indices.append(idx)
@@ -97,11 +97,11 @@ def main():
 
 
     # ====================================================
-    # 1. 模型初始化 & 加载 Ultimate 模型
+    # 1. Model initialization & loading the Ultimate model
     # ====================================================
     model = VQAModelAdvanced(len(tokenizer.vocab), hidden_dim=config.HIDDEN_DIM, dropout_p=0.3).to(device)
     
-    # 寻找你的 medvqa_ultimate.pth
+    # Search for your medvqa_ultimate.pth
     priority_paths = ["medvqa_ultimate.pth", "medvqa_final_boost.pth"]
     base_path = None
     
@@ -120,14 +120,14 @@ def main():
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     # ====================================================
-    #  真相验证：Baseline Check
+    #  Truth Verification: Baseline Check
     # ====================================================
     print("\n" + "!"*40)
     print(" BASELINE CHECK (Should coincide with your 32% Open Acc)")
     print("!"*40)
     c_corr, c_tot, o_corr, o_tot, _ = evaluate_engine(model, test_loader, tokenizer, evaluator, device)
     
-    # 防止除零
+    # Prevent division by zero
     c_acc = c_corr/c_tot if c_tot else 0
     o_acc = o_corr/o_tot if o_tot else 0
     t_acc = (c_corr+o_corr)/(c_tot+o_tot) if (c_tot+o_tot) else 0
@@ -137,7 +137,7 @@ def main():
 
 
     # ====================================================
-    # Phase A: 魔鬼特训
+    # Phase A:Devilish Training
     # ====================================================
     print("\n" + "="*40)
     print(" PHASE A: DEVIL TRAINING (Open Only)")
@@ -147,7 +147,7 @@ def main():
     for param in model.resnet_features.parameters(): param.requires_grad = True
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-2) 
     
-    # 只要比 Baseline 好，我们就开始保存
+    # As long as it is better than the Baseline, we will start to save it.
     best_open_acc = o_acc 
     specialist_path = "medvqa_specialist.pth"
 
@@ -171,7 +171,7 @@ def main():
 
 
     # ====================================================
-    # Phase B: 康复训练
+    # Phase B: rehealthy training
     # ====================================================
     print("\n" + "="*40)
     print(" PHASE B: REHAB TRAINING (Balance Restore)")
@@ -210,3 +210,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
