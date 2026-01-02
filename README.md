@@ -170,7 +170,7 @@ Seq2Seq pipeline supports optional SBERT similarity matching if `sentence-transf
 |---|---:|---:|---:|
 | Baseline CNN-LSTM | 33.70% | 56.18% | 5.50% |
 | Seq2Seq (Step 1) | 46.67% | 67.89% | 22.94% |
-| Seq2Seq (Step 3) | 54.72% | 70.00% | 37.65% |
+| Seq2Seq (Step 3) | 54.72% | 70.00% | 33.65% |
 | Curriculum (Devil→Rehab, Step 4) | **57.78%** | **73.16%** | **40.59%** |
 | BLIP-VQA Fine-tune (V6) | 45.01% | 66.93% | 17.50% |
 
