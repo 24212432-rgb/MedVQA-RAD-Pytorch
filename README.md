@@ -311,8 +311,8 @@ Typical outputs:
 
 ```text
 .
-├── main_baseline.py
-├── main_advanced_1.py
+├── main_baseline.py                      # Baseline (Model 1)
+├── main_advanced_1.py                    # Advanced Seq2Seq (Model 2)
 ├── main_advanced_2.py
 ├── main_advanced_3.py
 ├── run_strategy.py
