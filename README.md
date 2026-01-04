@@ -1,4 +1,4 @@
-# 🏥 MedVQA-Curriculum
+#  MedVQA-Curriculum
 
 **Curriculum Learning for Medical Visual Question Answering (VQA-RAD)**  
 **Baseline CNN-LSTM · Attention Seq2Seq · BLIP-VQA Fine-tuning**  
@@ -73,7 +73,7 @@ This repo supports reproduction and comparison of multiple MedVQA pipelines on V
 
 This project uses the **VQA-RAD** dataset.
 
-> ⚠️ Due to licensing/copyright, **raw images are not included** in this repo.
+>  Due to licensing/copyright, **raw images are not included** in this repo.
 
 ### Official download
 - OSF (official): https://osf.io/89kps/
@@ -83,7 +83,7 @@ This project uses the **VQA-RAD** dataset.
 
 ## Data Split & Anti-Leakage
 
-### ⚠️ Important: Image-Disjoint Split
+###  Important: Image-Disjoint Split
 
 The official VQA-RAD split has **significant data leakage**: ~64% of test images also appear in training. This inflates reported accuracies and doesn't reflect true generalization.
 
@@ -207,7 +207,7 @@ match = (prediction.lower().strip() == target.lower().strip())
 - **Open-ended**: all other answers
 - **Overall**: all answers
 
-> ⚠️ No synonym matching, no partial matching. This is the standard evaluation used in academic papers.
+>  No synonym matching, no partial matching. This is the standard evaluation used in academic papers.
 
 **Optional:** Seq2Seq pipeline supports SBERT semantic matching for more lenient open-ended evaluation.
 
@@ -241,8 +241,8 @@ match = (prediction.lower().strip() == target.lower().strip())
 |   Test Accuracy: 44.99%                                           |
 |   Val-Test Gap:  5.75%  ✓ Acceptable generalization               |
 +====================================================================+
-|   ✅ No data leakage (image-disjoint verified)                     |
-|   ✅ Pure strict match (pred == target)                            |
+|    No data leakage (image-disjoint verified)                     |
+|    Pure strict match (pred == target)                            |
 +====================================================================+
 ```
 
@@ -250,10 +250,10 @@ match = (prediction.lower().strip() == target.lower().strip())
 
 | Guarantee | Status |
 |-----------|--------|
-| No data leakage | ✅ 0 overlapping images |
-| Strict match evaluation | ✅ `pred == target` |
-| No overfitting | ✅ Val-Test gap < 6% |
-| Reproducible | ✅ Seed = 42 |
+| No data leakage |  0 overlapping images |
+| Strict match evaluation |  `pred == target` |
+| No overfitting |  Val-Test gap < 6% |
+| Reproducible |  Seed = 42 |
 
 ---
 
@@ -425,8 +425,5 @@ python blip_vqa_v12_final.py
 * Libraries: PyTorch, HuggingFace Transformers, Sentence-Transformers
 * Thanks to the research community for MedVQA baselines.
 
----
 
-## License
 
-This project is for educational and research purposes only.
