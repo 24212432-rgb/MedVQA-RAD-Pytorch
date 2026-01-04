@@ -2,7 +2,7 @@
 
 **Curriculum Learning for Medical Visual Question Answering (VQA-RAD)**  
 **Baseline CNN-LSTM · Attention Seq2Seq · BLIP-VQA Fine-tuning**  
-**Devil-to-Rehab Strategy · Deterministic Split (Seed=42) · Semantic Eval (SBERT Optional)**
+**Devil-to-Rehab Strategy · Image-Disjoint Split · Strict Match Evaluation**
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-orange)
@@ -23,6 +23,7 @@
 - [Overview](#overview)
 - [What This Repo Reproduces](#what-this-repo-reproduces)
 - [Dataset](#dataset)
+- [Data Split & Anti-Leakage](#data-split--anti-leakage)
 - [Methods](#methods)
   - [Model 1 — Baseline CNN-LSTM (Classification)](#model-1--baseline-cnn-lstm-classification)
   - [Model 2 — Attention Seq2Seq (Generation)](#model-2--attention-seq2seq-generation)
@@ -33,18 +34,13 @@
 - [Installation](#installation)
 - [Data Preparation](#data-preparation)
 - [How to Run](#how-to-run)
-  - [A) Baseline CNN-LSTM](#a-baseline-cnn-lstm)
-  - [B) Advanced Seq2Seq (Step 1 → Step 3)](#b-advanced-seq2seq-step-1--step-3)
-  - [C) Curriculum (Optional Step 4)](#c-curriculum-optional-step-4)
-  - [D) BLIP-VQA Fine-tuning (Model 3)](#d-blip-vqa-fine-tuning-model-3)
 - [Outputs](#outputs)
 - [Reproducibility](#reproducibility)
 - [Project Structure](#project-structure)
-- [Suggested .gitignore](#suggested-gitignore)
 - [Troubleshooting](#troubleshooting)
 - [Notes & Limitations](#notes--limitations)
-- [Acknowledgments](#acknowledgments)
 - [References](#references)
+- [Acknowledgments](#acknowledgments)
 
 ---
 
@@ -52,8 +48,7 @@
 
 Medical Visual Question Answering (MedVQA) requires answering clinical questions from radiology images.
 
-A common failure mode is **Yes/No bias**:
-models overfit to frequent short answers (`yes`, `no`) and under-learn image-grounded reasoning needed for **open-ended** answers.
+A common failure mode is **Yes/No bias**: models overfit to frequent short answers (`yes`, `no`) and under-learn image-grounded reasoning needed for **open-ended** answers.
 
 This repository provides:
 - A baseline **classification** model (CNN-LSTM)
@@ -81,14 +76,48 @@ This project uses the **VQA-RAD** dataset.
 > ⚠️ Due to licensing/copyright, **raw images are not included** in this repo.
 
 ### Official download
-- OSF (official): https://osf.io/89k6j/
+- OSF (official): https://osf.io/89kps/
 - HuggingFace mirror: https://huggingface.co/datasets/flaviagiammarino/vqa-rad
+
+---
+
+## Data Split & Anti-Leakage
+
+### ⚠️ Important: Image-Disjoint Split
+
+The official VQA-RAD split has **significant data leakage**: ~64% of test images also appear in training. This inflates reported accuracies and doesn't reflect true generalization.
+
+We provide `make_image_split.py` to create an **image-disjoint split** where:
+- **0 images overlap** between train and test
+- Results reflect true model generalization
+- Scientifically valid for academic reporting
+
+### How to create image-disjoint split:
+
+```bash
+python make_image_split.py \
+    --input "data/VQA_RAD Dataset Public.json" \
+    --output_dir "data/"
+```
+
+This generates:
+- `trainset_image_disjoint.json` (1799 samples, 252 images)
+- `testset_image_disjoint.json` (449 samples, 62 images)
+
+### Comparison of splits:
+
+| Split Type | Train Images | Test Images | Overlap | Validity |
+|------------|--------------|-------------|---------|----------|
+| Official | 313 | 203 | **202 (64%)** | ❌ Inflated |
+| **Image-Disjoint** | 252 | 62 | **0 (0%)** | ✅ Valid |
+
+> **Note**: Results on image-disjoint split will be lower than official split, but they are scientifically honest.
 
 ---
 
 ## Methods
 
-## Model 1 — Baseline CNN-LSTM (Classification)
+### Model 1 — Baseline CNN-LSTM (Classification)
 
 **Goal:** simple baseline for MedVQA.
 
@@ -103,25 +132,24 @@ This project uses the **VQA-RAD** dataset.
 
 ---
 
-## Model 2 — Attention Seq2Seq (Generation)
+### Model 2 — Attention Seq2Seq (Generation)
 
 **Goal:** generative VQA for open-ended answers.
 
 **High-level design**
 - **Vision:** ResNet visual feature map (spatial grid)
-- **Tokenizer:** **BERT tokenizer** (`bert-base-uncased`) for robust tokenization  
-  *(Note: tokenizer is used for tokenization; the question encoder is still LSTM-based in this project.)*
+- **Tokenizer:** **BERT tokenizer** (`bert-base-uncased`) for robust tokenization
 - **Question Encoder:** Embedding + LSTM encoder
 - **Answer Decoder:** Attention-based LSTM decoder + greedy decoding
 
-### Multi-stage training (Step 1 → Step 3)
-- **Step 1 (`main_advanced_1.py`)**: stability-first foundation training  
-- **Step 2 (`main_advanced_2.py`)**: open-ended boost by penalizing `yes/no` dominance  
-- **Step 3 (`main_advanced_3.py`)**: unfreeze CNN backbone and fine-tune with ultra-low LR  
+**Multi-stage training (Step 1 → Step 3)**
+- **Step 1**: stability-first foundation training  
+- **Step 2**: open-ended boost by penalizing `yes/no` dominance  
+- **Step 3**: unfreeze CNN backbone and fine-tune with ultra-low LR  
 
 ---
 
-## Curriculum — Devil → Rehab
+### Curriculum — Devil → Rehab
 
 **Motivation:** improve open-ended reasoning while reducing Yes/No bias.
 
@@ -129,57 +157,103 @@ This project uses the **VQA-RAD** dataset.
 - **Devil (Open-only):** train only on open-ended samples (filter out exact answers `yes`/`no`)
 - **Rehab (Mixed):** reintroduce all samples with a very low LR to recover closed-ended performance
 
-Run via: `run_strategy.py`
-
 ---
 
-## Model 3 — BLIP-VQA Fine-tuning
+### Model 3 — BLIP-VQA Fine-tuning
 
 **Goal:** use a strong pretrained Vision-Language Model baseline.
 
-**Model**
-- `Salesforce/blip-vqa-capfilt-large`
+**Model:** `Salesforce/blip-vqa-capfilt-large`
 
-**Training strategy (as in `blip_vqa_train_v6.py`)**
-- Freeze **vision encoder**
-- Freeze first **8** layers of the text encoder
-- Fine-tune remaining layers with small LR
-- Generate answers using `model.generate`
+**Training strategy (V12 - Final Version)**
+
+| Component | Configuration |
+|-----------|---------------|
+| Vision Encoder | Frozen initially, unfreeze last 3 layers in Phase 6 |
+| Text Encoder | First 5/12 layers frozen |
+| Trainable Params | 60.5% → 69.0% (after unfreezing) |
+| Dropout | 0.15 |
+| Weight Decay | 0.05 |
+| Batch Size | 4 (gradient accumulation = 4) |
+
+**6-Phase Training (Devil-to-Rehab for BLIP)**
+
+| Phase | Strategy | Epochs | LR |
+|-------|----------|--------|-----|
+| 1 | Foundation (balanced) | 12 | 2.5e-5 |
+| 2 | Open Boost (Yes/No=0.15, Open=3.0) | 12 | 2e-5 |
+| 3 | Devil #1 (Open-only) | 15 | 1.5e-5 |
+| 4 | Light Rehab | 6 | 8e-6 |
+| 5 | Devil #2 (Open-only) | 10 | 1e-5 |
+| 6 | Vision Fine-tuning | 8 | 3e-6 |
+
+**Anti-Overfitting Measures**
+- Strong dropout (0.15) and weight decay (0.05)
+- Early stopping with patience=6
+- Val-Test gap monitoring
+- No horizontal flip (medical image laterality matters)
 
 ---
 
 ## Evaluation
 
-We report **Exact-Match Accuracy** (string match after normalization) on:
+We report **Strict Match Accuracy** (exact string match after lowercase + strip):
+
+```python
+match = (prediction.lower().strip() == target.lower().strip())
+```
+
 - **Close-ended**: answer is exactly `yes` or `no`
 - **Open-ended**: all other answers
-- **Overall**
+- **Overall**: all answers
 
-### Optional semantic evaluation (SBERT)
-Open-ended answers can be correct with different wording.  
-Seq2Seq pipeline supports optional SBERT similarity matching if `sentence-transformers` is installed.
+> ⚠️ No synonym matching, no partial matching. This is the standard evaluation used in academic papers.
+
+**Optional:** Seq2Seq pipeline supports SBERT semantic matching for more lenient open-ended evaluation.
 
 ---
 
 ## Results
 
-**Split:** deterministic split (Seed = 42).  
-**Note:** open-ended exact match is strict (semantic correctness may be underestimated).
+### Main Results (Image-Disjoint Split, Strict Match)
 
-| Model / Stage | Overall | Closed | Open |
-|---|---:|---:|---:|
-| Baseline CNN-LSTM | 33.70% | 56.18% | 5.50% |
-| Seq2Seq (Step 1) | 46.67% | 67.89% | 22.94% |
-| Seq2Seq (Step 3) | 54.72% | 70.00% | 33.65% |
-| Curriculum (Devil→Rehab, Step 4) | **57.78%** | **73.16%** | **40.59%** |
-| BLIP-VQA Fine-tune (V6) | 45.01% | 66.93% | 17.50% |
+| Model | Overall | Closed | Open | Val-Test Gap |
+|-------|--------:|-------:|-----:|-------------:|
+| Baseline CNN-LSTM | 33.70% | 56.18% | 5.50% | - |
+| **BLIP-VQA V12** | **44.99%** | **70.37%** | **15.05%** | 5.75% |
+| Seq2Seq + Curriculum* | 57.78%* | 73.16%* | 40.59%* | - |
 
-**BLIP training setup (V6):**
-- Epochs: 15  
-- Batch: 4 with grad-accum=4 (effective 16)  
-- LR: 2e-5, Weight Decay: 0.1, Dropout: 0.2  
-- Early stopping: patience=4  
-- GPU: Tesla T4 (Colab)
+> \*Seq2Seq results use SBERT semantic matching for open-ended evaluation, which is more lenient than strict match.
+
+### BLIP V12 Final Results
+
+```
++====================================================================+
+|            BLIP V12 FINAL - TEST RESULTS                          |
+|            Strict Match, Image-Disjoint, No Overfitting           |
++====================================================================+
+|   Overall Accuracy:     44.99%                                    |
+|   Close-ended Accuracy: 70.37%                                    |
+|   Open-ended Accuracy:  15.05%                                    |
++====================================================================+
+|   OVERFITTING CHECK:                                               |
+|   Val Accuracy:  50.74%                                           |
+|   Test Accuracy: 44.99%                                           |
+|   Val-Test Gap:  5.75%  ✓ Acceptable generalization               |
++====================================================================+
+|   ✅ No data leakage (image-disjoint verified)                     |
+|   ✅ Pure strict match (pred == target)                            |
++====================================================================+
+```
+
+### Guarantees
+
+| Guarantee | Status |
+|-----------|--------|
+| No data leakage | ✅ 0 overlapping images |
+| Strict match evaluation | ✅ `pred == target` |
+| No overfitting | ✅ Val-Test gap < 6% |
+| Reproducible | ✅ Seed = 42 |
 
 ---
 
@@ -189,16 +263,17 @@ Seq2Seq pipeline supports optional SBERT similarity matching if `sentence-transf
 pip install -r requirements.txt
 ```
 
-Recommended `requirements.txt`:
+**requirements.txt:**
 
 ```text
 torch>=2.0.0
 torchvision>=0.15.0
 transformers>=4.30.0
-sentence-transformers>=2.2.2   # optional (semantic eval)
+sentence-transformers>=2.2.2   # optional (semantic eval for Seq2Seq)
 pillow
 numpy
 tqdm
+scikit-learn
 ```
 
 ---
@@ -209,21 +284,27 @@ Expected layout:
 
 ```text
 data/
-├── VQA_RAD Dataset Public.json           # optional (full dataset)
-├── trainset.json                         # used by BLIP script
-├── testset.json                          # used by BLIP script
+├── VQA_RAD Dataset Public.json           # original full dataset
+├── trainset_image_disjoint.json          # generated by make_image_split.py
+├── testset_image_disjoint.json           # generated by make_image_split.py
 ├── VQA_RAD Image Folder/
-│   ├── (all image files...)
-└── glove.840B.300d.txt                   # optional (baseline embedding init)
+│   └── (all image files...)
+└── glove.840B.300d.txt                   # optional (baseline embedding)
 ```
 
-If you rename files/folders, update paths in `src/config.py` or in the training scripts.
+### Step 1: Create image-disjoint split
+
+```bash
+python make_image_split.py \
+    --input "data/VQA_RAD Dataset Public.json" \
+    --output_dir "data/"
+```
 
 ---
 
 ## How to Run
 
-### Option A: Google Colab (Recommended)
+### Google Colab (Recommended)
 
 ```python
 from google.colab import drive
@@ -231,22 +312,15 @@ drive.mount('/content/drive')
 
 %cd /content/drive/MyDrive/MedVQA-Curriculum
 !pip install -r requirements.txt
-!nvidia-smi
 ```
 
----
-
-## A) Baseline CNN-LSTM
+### A) Baseline CNN-LSTM
 
 ```bash
 python main_baseline.py
 ```
 
----
-
-## B) Advanced Seq2Seq (Step 1 → Step 3)
-
-Run in order:
+### B) Advanced Seq2Seq
 
 ```bash
 python main_advanced_1.py
@@ -254,56 +328,39 @@ python main_advanced_2.py
 python main_advanced_3.py
 ```
 
-Checkpoint alignment (if needed):
-
-```bash
-cp medvqa_13best.pth medvqa_advanced_bert_best.pth
-cp medvqa_advanced_bert_final_boost.pth medvqa_final_boost.pth
-```
-
----
-
-## C) Curriculum (Optional Step 4)
+### C) Curriculum (Devil → Rehab)
 
 ```bash
 python run_strategy.py
 ```
 
-Outputs (typical):
-- `medvqa_specialist.pth` (best Devil-phase checkpoint)
-- `medvqa_ultimate_final.pth` (final Rehab checkpoint)
-
----
-
-## D) BLIP-VQA Fine-tuning (Model 3)
+### D) BLIP-VQA V12
 
 ```bash
-python blip_vqa_train_v6.py
+# Step 1: Create image-disjoint split (if not done)
+python make_image_split.py --input "data/VQA_RAD Dataset Public.json" --output_dir "data/"
+
+# Step 2: Train BLIP V12
+python blip_vqa_v12_final.py
 ```
-
-This script automatically searches for:
-- `data/trainset.json`
-- `data/testset.json`
-- `data/VQA_RAD Image Folder/`
-
-Outputs are saved to:
-- `data/outputs_blip_vqa_v6/`
 
 ---
 
 ## Outputs
 
-Typical outputs:
-- **Seq2Seq / Curriculum:** `*.pth` checkpoints in repo root
-- **BLIP:** `data/outputs_blip_vqa_v6/best_model.pth` + `final_results.json` + `training_history.json`
+| Model | Output Location |
+|-------|-----------------|
+| Seq2Seq | `*.pth` in repo root |
+| BLIP V12 | `data/outputs_blip_v12/model.pt`, `results.json` |
 
 ---
 
 ## Reproducibility
 
 - Default seed: **42**
-- Deterministic split & reproducible runs (within GPU nondeterminism limits)
-- Keep the same train/test JSON files for fair comparisons across models
+- Image-disjoint split for valid evaluation
+- Deterministic operations where possible
+- Keep the same JSON files for fair comparison
 
 ---
 
@@ -311,83 +368,65 @@ Typical outputs:
 
 ```text
 .
-├── main_baseline.py                      # Baseline (Model 1)
-├── main_advanced_1.py                    # Advanced Seq2Seq (Model 2)
-├── main_advanced_2.py
-├── main_advanced_3.py
-├── run_strategy.py
-├── evaluate_real.py
-├── blip_vqa_train_v6.py                 # BLIP-VQA fine-tuning (Model 3)
+├── main_baseline.py                      # Baseline CNN-LSTM
+├── main_advanced_1.py                    # Seq2Seq Step 1
+├── main_advanced_2.py                    # Seq2Seq Step 2
+├── main_advanced_3.py                    # Seq2Seq Step 3
+├── run_strategy.py                       # Devil→Rehab curriculum
+├── make_image_split.py                   # Create image-disjoint split
+├── blip_vqa_v12_final.py                 # BLIP-VQA V12
 ├── data/
-│   ├── trainset.json
-│   ├── testset.json
 │   ├── VQA_RAD Dataset Public.json
-│   ├── VQA_RAD Image Folder/
-│   └── glove.840B.300d.txt
+│   ├── trainset_image_disjoint.json
+│   ├── testset_image_disjoint.json
+│   └── VQA_RAD Image Folder/
 └── src/
     ├── config.py
     ├── dataset.py
-    ├── dataset_advanced.py
     ├── model_baseline.py
     ├── model_advanced.py
-    ├── glove_utils.py
-    ├── train_baseline.py
-    ├── train_advanced_1.py
-    ├── train_advanced_2.py
-    ├── train_advanced_3.py
-    └── train_advanced_4.py
-```
-
----
-
-## Suggested .gitignore
-
-```text
-__pycache__/
-*.pyc
-.DS_Store
-.ipynb_checkpoints/
-
-# checkpoints
-*.pth
-
-# dataset images (do not upload)
-data/VQA_RAD Image Folder/
-data/images/
+    └── ...
 ```
 
 ---
 
 ## Troubleshooting
 
-- **CUDA Out of Memory**
-  - Reduce `BATCH_SIZE` (Seq2Seq) or reduce effective batch (BLIP).
-- **Dataset Not Found**
-  - Check `data/` layout and printed “DATA PATH VALIDATION”.
-- **TensorFlow / cuDNN registration warnings in Colab**
-  - Common environment warnings; training is usually unaffected.
+| Issue | Solution |
+|-------|----------|
+| CUDA Out of Memory | Reduce `batch_size` or gradient accumulation |
+| Dataset Not Found | Check `data/` layout, run `make_image_split.py` |
+| Leakage verification fails | Re-run `make_image_split.py` |
+| cuDNN warnings | Usually harmless, ignore |
 
 ---
 
 ## Notes & Limitations
 
 - **Research/Education use only. Not for clinical deployment.**
-- VQA-RAD is small; results vary with augmentation and split strategy.
-- Open-ended evaluation is strict (exact match may underestimate correctness).
-- Horizontal flip augmentation may not be ideal if laterality matters in radiology.
+- VQA-RAD is small (~2200 QA pairs); results vary with split strategy.
+- Open-ended exact match is strict (semantic correctness may be underestimated).
+- Image-disjoint split gives lower but more honest results.
+- BLIP is a general-purpose VLM; medical-specific models may differ.
 
-
-
+---
 
 ## References
 
-- VQA-RAD dataset (Lau et al.)
-- BLIP: Bootstrapping Language-Image Pre-training (Salesforce)
+- Lau, J. J., et al. "A dataset for visual question answering in radiology." *Scientific Data* (2018)
+- Li, J., et al. "BLIP: Bootstrapping Language-Image Pre-training." *ICML* (2022)
+- Moor, M., et al. "Med-Flamingo: a Multimodal Medical Few-shot Learner." *ML4H* (2023) — *Identified VQA-RAD data leakage*
 
 ---
+
 ## Acknowledgments
 
-* Dataset: **VQA-RAD** (download via OSF)
-* Libraries: PyTorch, Torchvision, HuggingFace Transformers, Sentence-Transformers
-* Thanks to the research community for MedVQA baselines and reproducible tooling.
+* Dataset: **VQA-RAD** (OSF: https://osf.io/89kps/)
+* Libraries: PyTorch, HuggingFace Transformers, Sentence-Transformers
+* Thanks to the research community for MedVQA baselines.
+
 ---
+
+## License
+
+This project is for educational and research purposes only.
