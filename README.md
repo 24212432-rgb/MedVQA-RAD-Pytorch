@@ -368,13 +368,13 @@ python blip_vqa_v12_final.py
 
 ```text
 .
-├── main_baseline.py                      # Baseline CNN-LSTM
-├── main_advanced_1.py                    # Seq2Seq Step 1
-├── main_advanced_2.py                    # Seq2Seq Step 2
-├── main_advanced_3.py                    # Seq2Seq Step 3
-├── run_strategy.py                       # Devil→Rehab curriculum
-├── make_image_split.py                   # Create image-disjoint split
-├── blip_vqa_v12_final.py                 # BLIP-VQA V12
+├── main_baseline.py                      # Baseline CNN-LSTM（model 1）
+├── main_advanced_1.py                    # Seq2Seq Step 1（model 2）
+├── main_advanced_2.py                    # Seq2Seq Step 2（model 2）
+├── main_advanced_3.py                    # Seq2Seq Step 3（model 2）
+├── run_strategy.py                       # Devil→Rehab curriculum（model 2）
+├── make_image_split.py                   # Create image-disjoint split（model 3）
+├── blip_vqa.py                           # BLIP-VQA V12（model 3）
 ├── data/
 │   ├── VQA_RAD Dataset Public.json
 │   ├── trainset_image_disjoint.json
