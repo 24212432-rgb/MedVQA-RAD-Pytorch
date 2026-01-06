@@ -10,7 +10,7 @@
 ![Status](https://img.shields.io/badge/Status-Completed-success)
 
 > End-to-end Medical VQA implementation on **VQA-RAD**.
-> **Key Achievement:** Our **BLIP V12** model with "Devil-to-Rehab" curriculum achieved a 46.33% Strict Accuracy and 50.78% Soft Accuracy, demonstrating superior semantic understanding compared to baselines.
+> **Key Achievement:** Our **BLIP V12** model with the "Devil-to-Rehab" curriculum achieved **46.33% Strict Accuracy** and **50.78% Soft Score (Token-F1)** on the **image-disjoint** test set, highlighting improved robustness under a strict anti-leakage protocol.
 >
 > This repository contains **three models**:
 > 1) **Baseline CNN-LSTM** (classification-style VQA)  
@@ -109,10 +109,12 @@ This generates:
 
 The script prints a verification summary such as:
 
--VERIFICATION PASSED: NO IMAGE LEAKAGE!
--Train images: 252
--Test images:  62
--Overlap:      0
+```text
+VERIFICATION PASSED: NO IMAGE LEAKAGE!
+Train images: 252
+Test images:  62
+Overlap:      0
+
 
 ### Comparison of splits:
 
@@ -226,22 +228,20 @@ match = (prediction.lower().strip() == target.lower().strip())
 
 ### Main Results (Image-Disjoint Split)
 
-| Model | Overall Acc (Exact) | Open Acc (Exact) | **F1 Score (Semantic)** | Val-Test Gap |
+| Model | Overall Acc (Strict) | Open Acc (Strict) | **Soft Score (Token-F1)** | Val-Test Gap |
 |-------|--------:|-----:|-----:|-------------:|
 | Baseline CNN-LSTM | 33.70% | 5.50% | N/A | - |
 | Seq2Seq + Curriculum | ~57.78% | ~40.59% | ~41.00% | - |
-| **BLIP-VQA V12** | **46.33%** | **26.40%** | **50.78%**  | **4.78%** |
+| **BLIP-VQA V12** | **46.33%** | **15.05%** | **50.78%**  | **4.78%** |
 
 > **Critical Note:** Seq2Seq achieves higher *Exact Match* by memorizing frequent terms (overfitting to dataset style), whereas BLIP V12 achieves higher **F1 Score**, indicating superior semantic understanding (e.g., answering "left lung field" instead of just "left lung"). Soft Accuracy (or Semantic F1) is crucial for MedVQA. For example, when the target is fluid in the pleural space, BLIP V12 predicts pleural effusion. While "Strict Match" marks this as 0, our model captures the 100% correct clinical meaning.
-> \*Seq2Seq results use SBERT semantic matching for open-ended evaluation, which is more lenient than strict match.
+> \*Seq2Seq results use SBERT semantic matching for open-ended evaluation, which is more lenient than strict match. We also report **Soft Score (Token-F1)**: token-overlap F1 averaged over samples, which rewards partial semantic matches.
 
 ### BLIP VQA Results
 
 ```
-### BLIP VQA Results
-
 +====================================================================+
-|            BLIP V12 FINAL - TEST RESULTS (VERIFIED)               |
+|            BLIP V12 FINAL - TEST RESULTS (VERIFIED)                |
 |            Strict Match & Soft Accuracy on Image-Disjoint Split    |
 +====================================================================+
 |   Overall Accuracy (Strict):  46.33%                               |
