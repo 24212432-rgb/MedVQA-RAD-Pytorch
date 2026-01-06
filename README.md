@@ -334,14 +334,14 @@ python main_advanced_3.py
 python run_strategy.py
 ```
 
-### D) BLIP-VQA V12
+### D) BLIP-VQA 
 
 ```bash
 # Step 1: Create image-disjoint split (if not done)
 python make_image_split.py --input "data/VQA_RAD Dataset Public.json" --output_dir "data/"
 
-# Step 2: Train BLIP V12
-python blip_vqa_v12_final.py
+# Step 2: Train BLIP
+python blip_vqa.py
 ```
 
 ---
