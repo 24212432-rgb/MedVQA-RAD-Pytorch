@@ -101,18 +101,17 @@ To avoid this, we provide `make_image_split.py` to create an **image-disjoint sp
 python make_image_split.py \
   --input "data/VQA_RAD Dataset Public.json" \
   --output_dir "data/"
-This generates:
+```md
+The script will print a verification summary:
 
-trainset_image_disjoint.json (1799 QA pairs, 252 images)
-
-testset_image_disjoint.json (449 QA pairs, 62 images)
-
-The script prints a verification summary such as:
-
+```text
 VERIFICATION PASSED: NO IMAGE LEAKAGE!
 Train images: 252
 Test images:  62
 Overlap:      0
+
+
+
 ## Methods
 
 ### Model 1 — Baseline CNN-LSTM (Classification)
