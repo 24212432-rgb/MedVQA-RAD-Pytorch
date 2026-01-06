@@ -114,7 +114,7 @@ VERIFICATION PASSED: NO IMAGE LEAKAGE!
 Train images: 252
 Test images:  62
 Overlap:      0
-...
+```
 
 ### Comparison of splits:
 
