@@ -84,35 +84,43 @@ This project uses the **VQA-RAD** dataset.
 
 ## Data Split & Anti-Leakage
 
-###  Important: Image-Disjoint Split
+### Important: Image-Disjoint Split (Recommended)
 
-The official VQA-RAD split has **significant data leakage**: ~64% of test images also appear in training. This inflates reported accuracies and doesn't reflect true generalization.
+The VQA-RAD release provides a single JSON file (`VQA_RAD Dataset Public.json`) containing **multiple QA pairs per image**.  
+If you split the dataset by QA pairs (question-level split), the **same images can appear in both train and test**, which may inflate performance and does not reflect true generalization to unseen images.
 
-We provide `make_image_split.py` to create an **image-disjoint split** where:
-- **0 images overlap** between train and test
-- Results reflect true model generalization
-- Scientifically valid for academic reporting
+To avoid this, we provide `make_image_split.py` to create an **image-disjoint split**:
 
-### How to create image-disjoint split:
+- **0 images overlap** between train and test (image-level)
+- Better reflects generalization to **unseen images**
+- More suitable for strict academic reporting
+
+### Create the image-disjoint split
 
 ```bash
 python make_image_split.py \
-    --input "data/VQA_RAD Dataset Public.json" \
-    --output_dir "data/"
+  --input "data/VQA_RAD Dataset Public.json" \
+  --output_dir "data/"
 ```
 
 This generates:
 - `trainset_image_disjoint.json` (1799 samples, 252 images)
 - `testset_image_disjoint.json` (449 samples, 62 images)
 
+The script prints a verification summary such as:
+
+-VERIFICATION PASSED: NO IMAGE LEAKAGE!
+-Train images: 252
+-Test images:  62
+-Overlap:      0
+
 ### Comparison of splits:
 
 | Split Type | Train Images | Test Images | Overlap | Validity |
 |------------|--------------|-------------|---------|----------|
-| Official | 313 | 203 | **202 (64%)** | ❌ Inflated |
 | **Image-Disjoint** | 252 | 62 | **0 (0%)** | ✅ Valid |
 
-> **Note**: Results on image-disjoint split will be lower than official split, but they are scientifically honest.
+> **Note**: VQA-RAD contains multiple QA pairs per image. Any question-level (QA-pair) split may place the same image into both train and test, causing image-level leakage. Our split avoids this by design.
 
 ---
 
