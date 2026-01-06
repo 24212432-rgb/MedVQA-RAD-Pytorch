@@ -170,25 +170,29 @@ This project uses the **VQA-RAD** dataset.
 
 
 
-###  Important: Image-Disjoint Split
+### Important: Image-Disjoint Split (Recommended)
 
 
 
-The official VQA-RAD split has **significant data leakage**: ~64% of test images also appear in training. This inflates reported accuracies and doesn't reflect true generalization.
+VQA-RAD provides a single JSON file (`VQA_RAD Dataset Public.json`) with **multiple QA pairs per image**.  
+
+If you split the dataset by QA pairs (common random split), the **same images may appear in both train and test**, which can inflate performance and does not reflect true generalization to unseen images.
 
 
 
-We provide `make_image_split.py` to create an **image-disjoint split** where:
-
-- **0 images overlap** between train and test
-
-- Results reflect true model generalization
-
-- Scientifically valid for academic reporting
+To avoid this, we provide `make_image_split.py` to create an **image-disjoint split**:
 
 
 
-### How to create image-disjoint split:
+- **0 images overlap** between train and test (image-level)
+
+- Better reflects generalization to **unseen images**
+
+- More suitable for strict academic reporting
+
+
+
+### How to create the image-disjoint split
 
 
 
@@ -196,41 +200,29 @@ We provide `make_image_split.py` to create an **image-disjoint split** where:
 
 python make_image_split.py \
 
-    --input "data/VQA_RAD Dataset Public.json" \
+  --input "data/VQA_RAD Dataset Public.json" \
 
-    --output_dir "data/"
+  --output_dir "data/"
 
-```
+```md
 
-
-
-This generates:
-
-- `trainset_image_disjoint.json` (1799 samples, 252 images)
-
-- `testset_image_disjoint.json` (449 samples, 62 images)
+The script will print a verification summary:
 
 
 
-### Comparison of splits:
+```text
+
+VERIFICATION PASSED: NO IMAGE LEAKAGE!
+
+Train images: 252
+
+Test images:  62
+
+Overlap:      0
 
 
 
-| Split Type | Train Images | Test Images | Overlap | Validity |
 
-|------------|--------------|-------------|---------|----------|
-
-| Official | 313 | 203 | **202 (64%)** | ❌ Inflated |
-
-| **Image-Disjoint** | 252 | 62 | **0 (0%)** | ✅ Valid |
-
-
-
-> **Note**: Results on image-disjoint split will be lower than official split, but they are scientifically honest.
-
-
-
----
 
 
 
@@ -670,7 +662,7 @@ python run_strategy.py
 
 
 
-### D) BLIP-VQA V12
+### D) BLIP-VQA 
 
 
 
@@ -682,9 +674,9 @@ python make_image_split.py --input "data/VQA_RAD Dataset Public.json" --output_d
 
 
 
-# Step 2: Train BLIP V12
+# Step 2: Train BLIP
 
-python blip_vqa_v12_final.py
+python blip_vqa.py
 
 ```
 
@@ -849,3 +841,8 @@ python blip_vqa_v12_final.py
 * Libraries: PyTorch, HuggingFace Transformers, Sentence-Transformers
 
 * Thanks to the research community for MedVQA baselines.
+
+
+
+
+
