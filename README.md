@@ -234,7 +234,9 @@ match = (prediction.lower().strip() == target.lower().strip())
 | Seq2Seq + Curriculum | ~57.78% | ~40.59% | ~41.00% | - |
 | **BLIP-VQA V12** | **46.33%** | **15.05%** | **50.78%**  | **4.78%** |
 
-> **Critical Note:** Seq2Seq achieves higher *Exact Match* by memorizing frequent terms (overfitting to dataset style), whereas BLIP V12 achieves higher **F1 Score**, indicating superior semantic understanding (e.g., answering "left lung field" instead of just "left lung"). Soft Accuracy (or Semantic F1) is crucial for MedVQA. For example, when the target is fluid in the pleural space, BLIP V12 predicts pleural effusion. While "Strict Match" marks this as 0, our model captures the 100% correct clinical meaning.
+> **Critical Note:** Seq2Seq may achieve higher *Exact Match* by overfitting to frequent dataset-specific phrasing, while BLIP V12 shows stronger robustness under an image-disjoint split.
+> We additionally report **Soft Score (Token-F1)**, which gives partial credit when medically important **keywords overlap** (e.g., partial location/organ matches).  
+> **Limitation:** Token-F1 is still string-based and may not reward true synonyms/paraphrases; it should be interpreted as a *partial-match* indicator rather than full semantic equivalence.
 > \*Seq2Seq results use SBERT semantic matching for open-ended evaluation, which is more lenient than strict match. We also report **Soft Score (Token-F1)**: token-overlap F1 averaged over samples, which rewards partial semantic matches.
 
 ### BLIP VQA Results
@@ -427,7 +429,7 @@ python blip_vqa.py
 
 - Lau, J. J., et al. "A dataset for visual question answering in radiology." *Scientific Data* (2018)
 - Li, J., et al. "BLIP: Bootstrapping Language-Image Pre-training." *ICML* (2022)
-- Moor, M., et al. "Med-Flamingo: a Multimodal Medical Few-shot Learner." *ML4H* (2023) — *Identified VQA-RAD data leakage*
+- Moor, M., et al. "Med-Flamingo: a Multimodal Medical Few-shot Learner." arXiv:2307.15189 (2023) — *Identified severe data leakage in official train/test splits*
 
 ---
 
