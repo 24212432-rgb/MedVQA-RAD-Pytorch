@@ -222,7 +222,7 @@ match = (prediction.lower().strip() == target.lower().strip())
 |-------|--------:|-----:|-----:|-------------:|
 | Baseline CNN-LSTM | 33.70% | 5.50% | N/A | - |
 | Seq2Seq + Curriculum | ~57.78% | ~40.59% | ~41.00% | - |
-| **BLIP-VQA V12** | **39.87%** | **26.40%** | **43.25%** 🏆 | **8.63%** |
+| **BLIP-VQA V12** | **39.87%** | **26.40%** | **43.25%**  | **8.63%** |
 
 > **Critical Note:** Seq2Seq achieves higher *Exact Match* by memorizing frequent terms (overfitting to dataset style), whereas BLIP V12 achieves higher **F1 Score**, indicating superior semantic understanding (e.g., answering "left lung field" instead of just "left lung").
 
