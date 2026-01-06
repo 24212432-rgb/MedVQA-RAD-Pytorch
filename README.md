@@ -246,9 +246,9 @@ match = (prediction.lower().strip() == target.lower().strip())
 +====================================================================+
 ```
 
-### Guarantees
+### Sanity Checks / Diagnostics
 
-| Guarantee | Status |
+| Diagnostics | Status |
 |-----------|--------|
 | No data leakage |  0 overlapping images |
 | Strict match evaluation |  `pred == target` |
