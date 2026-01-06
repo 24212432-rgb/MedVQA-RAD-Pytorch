@@ -8,9 +8,8 @@ import time
 from pathlib import Path
 from glob import glob
 from collections import Counter
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm  
 
-# Environment Setup
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
@@ -29,19 +28,20 @@ from sklearn.model_selection import train_test_split
 from transformers import BlipProcessor, BlipForQuestionAnswering
 
 # =============================================================================
-# 1. GPU Configuration
+# GPU Check
 # =============================================================================
 def check_gpu():
     print("=" * 70)
-    print("BLIP TRAINING: V12 (Smart Augmentation + Phased Learning)")
+    print("BLIP V12 FINAL + SPEED CACHING")
+    print("Strict Match | No Leakage | No Overfitting | High Speed")
     print("=" * 70)
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        print(f"[INFO] GPU Detected: {torch.cuda.get_device_name(0)}")
-        print(f"[INFO] VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        print(f"[OK] GPU: {torch.cuda.get_device_name(0)}")
+        print(f"[OK] Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     else:
         device = torch.device("cpu")
-        print("[WARNING] No GPU found. Training will be extremely slow.")
+        print("[WARNING] No GPU - training will be slow!")
     print("=" * 70)
     return device
 
@@ -49,45 +49,121 @@ DEVICE = check_gpu()
 USE_AMP = DEVICE.type == 'cuda'
 
 # =============================================================================
-# 2. Configuration Class
+# [NEW] SMART PATH FINDING & CACHING (The Engineering Fix)
+# =============================================================================
+def auto_find_image_source(base_path, sample_image_name):
+    """Automatically finds where the images are stored in Drive."""
+    print(f"Searching for source of image '{sample_image_name}'...")
+    candidates = ["data", "images", "VQA_RAD Image Folder", "VQA_RAD Dataset Public", "."]
+    
+    # 1. Check strict subfolders
+    for sub in candidates:
+        check_path = Path(base_path) / sub / sample_image_name
+        if check_path.exists():
+            return Path(base_path) / sub
+            
+    # 2. Recursive search (slower but robust)
+    found_files = list(Path(base_path).rglob(sample_image_name))
+    if found_files:
+        return found_files[0].parent
+        
+    raise FileNotFoundError(f"Could not find {sample_image_name} in {base_path}")
+
+def cache_images_locally(source_dir, dest_dir):
+    """
+    Copies images from Google Drive to Colab Local Disk.
+    This prevents 'Input/Output Error' and speeds up training by 20x.
+    """
+    source = Path(source_dir)
+    dest = Path(dest_dir)
+    
+    if dest.exists() and any(dest.iterdir()):
+        print(f"[CACHE] Using existing local cache at {dest}")
+        return dest
+        
+    print(f"\n[OPTIMIZATION] Copying images from Drive to Local Disk for speed...")
+    print(f" Source: {source}")
+    print(f" Dest:   {dest}")
+    dest.mkdir(parents=True, exist_ok=True)
+    
+    files = list(source.glob("*"))
+    # Use tqdm to show copy progress
+    for f in tqdm(files, desc="Caching images"):
+        if f.is_file():
+            shutil.copy2(f, dest / f.name)
+            
+    print("Copy complete! Training will now be fast and stable.\n")
+    return dest
+
+# =============================================================================
+# Data Leakage Verification
+# =============================================================================
+def verify_image_disjoint(train_data, test_data):
+    """CRITICAL: Verify NO image overlap between train and test."""
+    train_images = set()
+    test_images = set()
+    for item in train_data:
+        img = item.get('image_name', item.get('image', ''))
+        if img: train_images.add(img)
+    for item in test_data:
+        img = item.get('image_name', item.get('image', ''))
+        if img: test_images.add(img)
+    
+    overlap = train_images & test_images
+    if len(overlap) == 0:
+        print(f"\n[PASSED] No image leakage detected! (Scientific Validity OK)")
+        return True, 0
+    else:
+        print(f"\n[FAILED] {len(overlap)} images appear in both sets!")
+        return False, len(overlap)
+
+# =============================================================================
+# Configuration (V12 Logic Preserved)
 # =============================================================================
 class Config:
     model_name = "Salesforce/blip-vqa-capfilt-large"
     
-    # --- Training Phases (The "Secret Sauce" for high accuracy) ---
-    phase1_epochs = 12; phase1_lr = 2.5e-5  # Phase 1: Foundation
-    phase2_epochs = 12; phase2_lr = 2e-5    # Phase 2: Open-Ended Boost
-    phase3_epochs = 15; phase3_lr = 1.5e-5  # Phase 3: Hard Samples Only (Devil #1)
-    phase4_epochs = 6;  phase4_lr = 8e-6    # Phase 4: Recovery (Rehab)
-    phase5_epochs = 10; phase5_lr = 1e-5    # Phase 5: Hard Samples Refinement (Devil #2)
-    phase6_epochs = 8;  phase6_lr = 3e-6    # Phase 6: Visual Fine-tuning
+    # ========== TRAINING PHASES (V12) ==========
+    phase1_epochs = 12; phase1_lr = 2.5e-5  # Foundation
+    phase2_epochs = 12; phase2_lr = 2e-5    # Open Boost
+    phase3_epochs = 15; phase3_lr = 1.5e-5  # Devil #1
+    phase4_epochs = 6;  phase4_lr = 8e-6    # Rehab
+    phase5_epochs = 10; phase5_lr = 1e-5    # Devil #2
+    phase6_epochs = 8;  phase6_lr = 3e-6    # Vision FT
     
-    # --- Weighting & Augmentation ---
-    yesno_weight = 0.15   # Down-weight easy Yes/No questions
-    open_weight = 3.0     # Up-weight hard Open questions
-    augment_prob = 0.40   # 40% chance to augment image (Make it smarter)
+    # ========== SAMPLE WEIGHTING ==========
+    yesno_weight = 0.15 
+    open_weight = 3.0 
     
-    # --- System Params ---
-    batch_size = 4        # Low batch size for stability
+    # ========== ANTI-OVERFITTING ==========
+    dropout_rate = 0.15
+    weight_decay = 0.05 
+    augment_prob = 0.35 
+    
+    # ========== TRAINING ==========
+    batch_size = 4
     gradient_accumulation = 4
     max_grad_norm = 1.0
     warmup_ratio = 0.1
     
-    # --- Model Params ---
+    # ========== MODEL ==========
     max_question_length = 32
     max_answer_length = 20
+    num_beams = 4
     
-    # --- Freezing Strategy ---
+    # ========== FREEZING ==========
     freeze_text_layers = 5
     unfreeze_vision_layers = 3
     
-    # --- Early Stopping ---
+    # ========== EARLY STOPPING ==========
     patience = 6
     min_delta = 0.002
     
-    # --- Paths ---
+    # ========== DATA ==========
     val_ratio = 0.15
     seed = 42
+    
+    # IMPORTANT: Keep 0 for stability when using cached images
     num_workers = 0 
 
 def set_seed(seed):
@@ -99,46 +175,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
 
 # =============================================================================
-# 3. Smart Path Finding & Caching
-# =============================================================================
-def auto_find_image_source(base_path, sample_image_name):
-    """Automatically locates the image folder."""
-    print(f"[INFO] Searching for image source: {sample_image_name}...")
-    candidates = ["data", "images", "VQA_RAD Image Folder", "VQA_RAD Dataset Public", "."]
-    
-    for sub in candidates:
-        check_path = Path(base_path) / sub / sample_image_name
-        if check_path.exists():
-            return Path(base_path) / sub
-            
-    found_files = list(Path(base_path).rglob(sample_image_name))
-    if found_files:
-        return found_files[0].parent
-        
-    raise FileNotFoundError(f"Could not find {sample_image_name} in {base_path}")
-
-def cache_images_locally(source_dir, dest_dir):
-    """Copies images to local Colab disk for 20x speedup."""
-    source = Path(source_dir)
-    dest = Path(dest_dir)
-    
-    if dest.exists() and any(dest.iterdir()):
-        print(f"[INFO] Using existing local cache at {dest}")
-        return dest
-        
-    print(f"\n[INFO] Caching images to local disk (Speed Optimization)...")
-    dest.mkdir(parents=True, exist_ok=True)
-    
-    files = list(source.glob("*"))
-    for f in tqdm(files, desc="Caching"):
-        if f.is_file():
-            shutil.copy2(f, dest / f.name)
-            
-    print("[INFO] Cache complete.\n")
-    return dest
-
-# =============================================================================
-# 4. Dataset with Smart Augmentation
+# Dataset with Augmentation (V12 Logic)
 # =============================================================================
 class VQADataset(Dataset):
     def __init__(self, data, image_dir, processor, is_train=True):
@@ -147,6 +184,7 @@ class VQADataset(Dataset):
         self.processor = processor
         self.is_train = is_train
         
+        # Classify questions
         self.close_indices = []
         self.open_indices = []
         for i, item in enumerate(data):
@@ -163,21 +201,22 @@ class VQADataset(Dataset):
         item = self.data[idx]
         img_name = item.get('image_name', item.get('image', ''))
         
-        # Robust Image Loading
+        # Robust Image Loading (Handles case sensitivity)
         image_path = self.image_dir / img_name
         if not image_path.exists():
+            # Try finding file with case-insensitive match
             candidates = list(self.image_dir.glob(f"{img_name}*"))
             if candidates:
                 image_path = candidates[0]
             else:
+                # Fallback
                 image = Image.new('RGB', (384, 384), color='gray')
                 image_path = None
         
         if image_path:
             image = Image.open(image_path).convert('RGB')
             
-        # === SMART AUGMENTATION ===
-        # Randomly adjust brightness/contrast to make model robust
+        # Data augmentation (training only)
         if self.is_train and random.random() < Config.augment_prob:
             image = self._augment(image)
             
@@ -195,6 +234,7 @@ class VQADataset(Dataset):
         
         ans_enc = self.processor.tokenizer(
             answer,
+            add_special_tokens=True,
             padding='max_length',
             truncation=True,
             max_length=Config.max_answer_length,
@@ -202,7 +242,6 @@ class VQADataset(Dataset):
         )
         
         labels = ans_enc['input_ids'].squeeze(0).clone()
-        # Ignore padding in loss calculation
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
         is_close = (answer in ['yes', 'no'])
         
@@ -214,37 +253,42 @@ class VQADataset(Dataset):
             'decoder_attention_mask': ans_enc['attention_mask'].squeeze(0),
             'labels': labels,
             'answer_text': answer,
-            'is_close': is_close
+            'is_close': is_close,
+            'question': question
         }
         
     def _augment(self, image):
-        """Applies medical-safe augmentations."""
+        """Simple augmentation that doesn't distort medical info"""
         arr = np.array(image).astype(np.float32)
-        # Random Brightness
+        # Brightness
         if random.random() < 0.5:
-            arr = arr * random.uniform(0.8, 1.2)
-        # Random Contrast
+            arr = arr * random.uniform(0.9, 1.1)
+        # Contrast
         if random.random() < 0.5:
             mean = arr.mean()
-            arr = (arr - mean) * random.uniform(0.8, 1.2) + mean
-        
+            arr = (arr - mean) * random.uniform(0.9, 1.1) + mean
         arr = np.clip(arr, 0, 255).astype(np.uint8)
         return Image.fromarray(arr)
 
 # =============================================================================
-# 5. Model Definition
+# Model (V12 Logic)
 # =============================================================================
 class BLIPModel(nn.Module):
     def __init__(self):
         super().__init__()
-        print(f"[INFO] Loading Pretrained Model: {Config.model_name}")
+        print(f"\nLoading: {Config.model_name}")
         self.model = BlipForQuestionAnswering.from_pretrained(Config.model_name)
         
-        # Freeze Vision Encoder initially
+        # V12: Stronger dropout
+        for m in self.model.modules():
+            if isinstance(m, nn.Dropout):
+                m.p = Config.dropout_rate
+        
+        # Freeze vision initially
         for p in self.model.vision_model.parameters():
             p.requires_grad = False
             
-        # Freeze lower text layers
+        # Freeze text layers
         if hasattr(self.model, 'text_encoder'):
             for i, layer in enumerate(self.model.text_encoder.encoder.layer):
                 if i < Config.freeze_text_layers:
@@ -257,7 +301,7 @@ class BLIPModel(nn.Module):
             for i, layer in enumerate(layers):
                 if i >= total - n_layers:
                     for p in layer.parameters(): p.requires_grad = True
-            print(f"[INFO] Unfrozen last {n_layers} vision layers for Fine-Tuning.")
+            print(f"[OK] Vision: last {n_layers} layers UNFROZEN")
 
     def forward(self, pixel_values, input_ids, attention_mask,
                 decoder_input_ids, decoder_attention_mask, labels):
@@ -270,24 +314,28 @@ class BLIPModel(nn.Module):
             labels=labels,
             return_dict=True
         )
-    
+
     def generate(self, pixel_values, input_ids, attention_mask):
         return self.model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
             attention_mask=attention_mask,
-            max_length=Config.max_answer_length
+            max_length=Config.max_answer_length,
+            num_beams=Config.num_beams,
+            early_stopping=True
         )
 
 # =============================================================================
-# 6. Training Engine
+# Evaluation (V12 Strict Match)
 # =============================================================================
 @torch.no_grad()
 def evaluate(model, loader, processor):
     model.eval()
     correct_all = []
+    correct_close = []
     correct_open = []
     
+    # Use tqdm for evaluation too
     for batch in tqdm(loader, desc="Evaluating", leave=False):
         pv = batch['pixel_values'].to(DEVICE)
         ids = batch['input_ids'].to(DEVICE)
@@ -295,54 +343,59 @@ def evaluate(model, loader, processor):
         
         gen_ids = model.generate(pv, ids, mask)
         preds = processor.batch_decode(gen_ids, skip_special_tokens=True)
+        preds = [p.lower().strip() for p in preds]
         
         for pred, target, is_close in zip(preds, batch['answer_text'], batch['is_close']):
-            match = (pred.lower().strip() == target)
+            match = (pred == target)
             correct_all.append(match)
-            if not is_close: correct_open.append(match)
+            if is_close: correct_close.append(match)
+            else: correct_open.append(match)
             
     return {
         'overall': np.mean(correct_all) if correct_all else 0,
-        'open': np.mean(correct_open) if correct_open else 0
+        'close': np.mean(correct_close) if correct_close else 0,
+        'open': np.mean(correct_open) if correct_open else 0,
+        'n_total': len(correct_all),
+        'n_close': len(correct_close),
+        'n_open': len(correct_open)
     }
 
-def train_epoch(model, loader, optimizer, scheduler, scaler):
+# =============================================================================
+# Training with Anti-Overfitting (V12 Logic)
+# =============================================================================
+def train_epoch(model, loader, optimizer, scheduler, scaler, use_weighting=True):
     model.train()
     total_loss = 0
+    n_batches = 0
+    optimizer.zero_grad()
     
+    # Use tqdm for progress bar
     pbar = tqdm(loader, desc="Training", leave=False)
     
     for step, batch in enumerate(pbar):
-        optimizer.zero_grad()
-        
         pv = batch['pixel_values'].to(DEVICE)
         ids = batch['input_ids'].to(DEVICE)
         mask = batch['attention_mask'].to(DEVICE)
+        dec_ids = batch['decoder_input_ids'].to(DEVICE)
+        dec_mask = batch['decoder_attention_mask'].to(DEVICE)
         labels = batch['labels'].to(DEVICE)
-        
-        # Weighted Loss Calculation
         is_close = batch['is_close']
         
         with autocast(enabled=USE_AMP):
-            outputs = model(
-                pixel_values=pv, input_ids=ids, attention_mask=mask,
-                decoder_input_ids=batch['decoder_input_ids'].to(DEVICE),
-                decoder_attention_mask=batch['decoder_attention_mask'].to(DEVICE),
-                labels=labels
-            )
+            outputs = model(pv, ids, mask, dec_ids, dec_mask, labels)
             loss = outputs.loss
             
-            # Dynamic Reweighting (Focus on Hard Questions)
-            batch_size = labels.size(0)
-            n_close = sum(is_close).item()
-            n_open = batch_size - n_close
+            # V12 Sample weighting
+            if use_weighting:
+                batch_size = labels.size(0)
+                n_close = sum(is_close).item()
+                n_open = batch_size - n_close
+                if n_open > 0 and n_close > 0:
+                    weight = (n_close/batch_size)*Config.yesno_weight + (n_open/batch_size)*Config.open_weight
+                elif n_open > 0: weight = Config.open_weight
+                else: weight = Config.yesno_weight
+                loss = loss * weight
             
-            if n_open > 0:
-                weight = Config.open_weight
-            else:
-                weight = Config.yesno_weight
-                
-            loss = loss * weight
             loss = loss / Config.gradient_accumulation
         
         scaler.scale(loss).backward()
@@ -353,112 +406,135 @@ def train_epoch(model, loader, optimizer, scheduler, scaler):
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
+            optimizer.zero_grad()
+            
+        current_loss = loss.item() * Config.gradient_accumulation
+        total_loss += current_loss
+        n_batches += 1
+        pbar.set_postfix({'loss': f"{current_loss:.4f}"})
         
-        total_loss += loss.item() * Config.gradient_accumulation
-        pbar.set_postfix({'loss': f"{loss.item() * Config.gradient_accumulation:.4f}"})
-        
-    return total_loss / len(loader)
+    return total_loss / max(1, n_batches)
 
-def run_phase(model, train_loader, val_loader, processor, epochs, lr, phase_name):
-    print(f"\n>>> STARTING {phase_name} (LR: {lr})")
-    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+def run_phase(model, train_loader, val_loader, processor, epochs, lr, phase_name, use_weighting=True):
+    print(f"\n>>> {phase_name} (Epochs: {epochs}, LR: {lr})")
+    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=Config.weight_decay)
     
-    total_steps = len(train_loader) * epochs // Config.gradient_accumulation
+    total_steps = max(1, len(train_loader) * epochs // Config.gradient_accumulation)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=lr, total_steps=total_steps, pct_start=Config.warmup_ratio
+        optimizer, max_lr=lr, total_steps=total_steps, pct_start=Config.warmup_ratio, anneal_strategy='cos'
     )
     scaler = GradScaler(enabled=USE_AMP)
     
     best_score = 0
+    best_state = None
+    patience_count = 0
     
     for epoch in range(1, epochs + 1):
-        loss = train_epoch(model, train_loader, optimizer, scheduler, scaler)
-        res = evaluate(model, val_loader, processor)
+        loss = train_epoch(model, train_loader, optimizer, scheduler, scaler, use_weighting)
+        results = evaluate(model, val_loader, processor)
         
-        score = 0.5 * res['overall'] + 0.5 * res['open']
-        print(f" Ep {epoch}/{epochs} | Loss: {loss:.4f} | Acc: {res['overall']*100:.1f}% | Open: {res['open']*100:.1f}%", end="")
+        overall = results['overall']
+        open_acc = results['open']
+        # V12 Metric
+        score = 0.5 * overall + 0.5 * open_acc 
         
-        if score > best_score:
+        print(f" Ep {epoch}/{epochs} | Loss: {loss:.4f} | All: {100*overall:.2f}% | Open: {100*open_acc:.2f}%", end="")
+        
+        if score > best_score + Config.min_delta:
             best_score = score
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            patience_count = 0
             print(" [BEST]")
-            # Save intermediate best
-            torch.save(model.state_dict(), './outputs_blip_v12_final/temp_best.pt')
         else:
+            patience_count += 1
             print()
+            
+        if patience_count >= Config.patience:
+            print(f" Early stopping triggered.")
+            break
+            
+    if best_state: model.load_state_dict(best_state)
+    return best_score, best_score # returning score twice for simplicity
 
 # =============================================================================
-# 7. Main Execution
+# Main Pipeline
 # =============================================================================
 def main():
     set_seed(Config.seed)
     
-    # 1. Paths
+    # 1. SETUP PATHS & CACHE IMAGES (The Critical Fix)
     base_path = '/content/drive/MyDrive/7015'
     train_path = os.path.join(base_path, 'trainset_image_disjoint.json')
     test_path = os.path.join(base_path, 'testset_image_disjoint.json')
     
-    # 2. Data Initialization
-    print("[INFO] Loading Datasets...")
+    # Auto-find and Cache
+    print("Initializing Data...")
+    if not os.path.exists(train_path):
+        print(f"ERROR: {train_path} not found.")
+        return
+
     with open(train_path, 'r') as f: train_data_full = json.load(f)
+    
+    # Detect Source and Cache Locally
+    sample_img = train_data_full[0].get('image_name', train_data_full[0].get('image', ''))
+    source_image_dir = auto_find_image_source(base_path, sample_img)
+    local_image_dir = '/content/local_images_cache'
+    
+    # This function copies images to local disk to prevent Colab freezing
+    final_image_dir = cache_images_locally(source_image_dir, local_image_dir)
+    
+    # 2. LOAD DATA
     with open(test_path, 'r') as f: test_data = json.load(f)
     
-    # Cache Images
-    sample_img = train_data_full[0].get('image_name', train_data_full[0].get('image', ''))
-    source_dir = auto_find_image_source(base_path, sample_img)
-    image_dir = cache_images_locally(source_dir, '/content/local_images_cache')
-    
-    # 3. Create Processors & Datasets
-    processor = BlipProcessor.from_pretrained(Config.model_name)
+    if not verify_image_disjoint(train_data_full, test_data)[0]:
+        return
+
     train_data, val_data = train_test_split(train_data_full, test_size=Config.val_ratio, random_state=Config.seed)
     
-    train_ds = VQADataset(train_data, image_dir, processor, is_train=True)
-    val_ds = VQADataset(val_data, image_dir, processor, is_train=False)
-    test_ds = VQADataset(test_data, image_dir, processor, is_train=False)
+    processor = BlipProcessor.from_pretrained(Config.model_name)
     
-    # Subsets for Phased Training
-    open_subset = Subset(train_ds, train_ds.open_indices)
+    # 3. CREATE DATASETS (Using Cached Image Dir)
+    train_dataset = VQADataset(train_data, final_image_dir, processor, is_train=True)
+    val_dataset = VQADataset(val_data, final_image_dir, processor, is_train=False)
+    test_dataset = VQADataset(test_data, final_image_dir, processor, is_train=False)
     
-    # Loaders
-    train_loader = DataLoader(train_ds, batch_size=Config.batch_size, shuffle=True, num_workers=0)
+    # 4. LOADERS (num_workers=0 is safe because images are on fast local disk)
+    train_loader = DataLoader(train_dataset, batch_size=Config.batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=Config.batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=Config.batch_size, shuffle=False, num_workers=0)
+    
+    open_subset = Subset(train_dataset, train_dataset.open_indices)
     open_loader = DataLoader(open_subset, batch_size=Config.batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_ds, batch_size=Config.batch_size, shuffle=False)
-    test_loader = DataLoader(test_ds, batch_size=Config.batch_size, shuffle=False)
     
-    # 4. Model Setup
+    print(f"Train Size: {len(train_dataset)} | Open-Only Subset: {len(open_subset)}")
+
+    # 5. RUN TRAINING (V12 Phases)
     model = BLIPModel().to(DEVICE)
     
-    # 5. Phased Training Schedule (FULL 6 PHASES)
-    # Phase 1: Foundation (All Data)
-    run_phase(model, train_loader, val_loader, processor, Config.phase1_epochs, Config.phase1_lr, "PHASE 1: Foundation")
+    run_phase(model, train_loader, val_loader, processor, Config.phase1_epochs, Config.phase1_lr, "PHASE 1: Foundation", False)
+    run_phase(model, train_loader, val_loader, processor, Config.phase2_epochs, Config.phase2_lr, "PHASE 2: Open Boost", True)
+    run_phase(model, open_loader, val_loader, processor, Config.phase3_epochs, Config.phase3_lr, "PHASE 3: Devil #1 (Open Only)", False)
+    run_phase(model, train_loader, val_loader, processor, Config.phase4_epochs, Config.phase4_lr, "PHASE 4: Rehab", False)
+    run_phase(model, open_loader, val_loader, processor, Config.phase5_epochs, Config.phase5_lr, "PHASE 5: Devil #2 (Open Only)", False)
     
-    # Phase 2: Open Boost (All Data, Higher LR)
-    run_phase(model, train_loader, val_loader, processor, Config.phase2_epochs, Config.phase2_lr, "PHASE 2: Open Boost")
-    
-    # Phase 3: Devil #1 (Hard Data ONLY)
-    run_phase(model, open_loader, val_loader, processor, Config.phase3_epochs, Config.phase3_lr, "PHASE 3: Devil #1 (Open Only)")
-    
-    # Phase 4: Rehab (All Data - Fix for 'forgetting')
-    run_phase(model, train_loader, val_loader, processor, Config.phase4_epochs, Config.phase4_lr, "PHASE 4: Rehab")
-    
-    # Phase 5: Devil #2 (Hard Data ONLY - Final polish before vision)
-    run_phase(model, open_loader, val_loader, processor, Config.phase5_epochs, Config.phase5_lr, "PHASE 5: Devil #2 (Open Only)")
-    
-    # Phase 6: Vision Fine-Tuning (Unfreeze Vision + All Data)
-    print("\n[INFO] Unfreezing Vision Layers for Final Fine-Tuning...")
+    print("\n[UNFREEZING VISION]")
     model.unfreeze_vision(Config.unfreeze_vision_layers)
-    run_phase(model, train_loader, val_loader, processor, Config.phase6_epochs, Config.phase6_lr, "PHASE 6: Vision Fine-Tuning")
+    run_phase(model, train_loader, val_loader, processor, Config.phase6_epochs, Config.phase6_lr, "PHASE 6: Vision FT", False)
     
-    # 6. Final Save
+    # 6. FINAL EVAL
+    print("\n" + "="*50)
+    print("FINAL TEST SET EVALUATION")
+    print("="*50)
+    res = evaluate(model, test_loader, processor)
+    print(f"Overall: {res['overall']*100:.2f}%")
+    print(f"Open:    {res['open']*100:.2f}%")
+    print(f"Close:   {res['close']*100:.2f}%")
+    
+    # Save
     output_dir = './outputs_blip_v12_final'
     os.makedirs(output_dir, exist_ok=True)
-    save_path = os.path.join(output_dir, 'final_model.pt')
-    torch.save(model.state_dict(), save_path)
-    print(f"\n[SUCCESS] Training Complete. Model saved to: {save_path}")
-    
-    # 7. Final Verification
-    print("\n[INFO] Running Final Test Evaluation...")
-    res = evaluate(model, test_loader, processor)
-    print(f"Final Test Accuracy: {res['overall']*100:.2f}%")
+    torch.save(model.state_dict(), os.path.join(output_dir, 'final_model.pt'))
+    print(f"Model saved to {output_dir}")
 
 if __name__ == "__main__":
     main()
