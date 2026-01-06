@@ -228,7 +228,7 @@ match = (prediction.lower().strip() == target.lower().strip())
 
 > \*Seq2Seq results use SBERT semantic matching for open-ended evaluation, which is more lenient than strict match.
 
-### BLIP V12 Final Results
+### BLIP VQA Results
 
 ```
 +====================================================================+
@@ -334,14 +334,14 @@ python main_advanced_3.py
 python run_strategy.py
 ```
 
-### D) BLIP-VQA V12
+### D) BLIP-VQA 12
 
 ```bash
 # Step 1: Create image-disjoint split (if not done)
 python make_image_split.py --input "data/VQA_RAD Dataset Public.json" --output_dir "data/"
 
-# Step 2: Train BLIP V12
-python blip_vqa_v12_final.py
+# Step 2: Train BLIP VQA
+python blip_vqa.py
 ```
 
 ---
