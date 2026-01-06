@@ -115,7 +115,7 @@ Train images: 252
 Test images:  62
 Overlap:      0
 
----
+text …… 
 
 ### Comparison of splits:
 
