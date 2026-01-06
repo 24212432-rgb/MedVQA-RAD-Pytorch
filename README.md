@@ -254,9 +254,9 @@ match = (prediction.lower().strip() == target.lower().strip())
 |   Test Accuracy:      46.33%                                       |
 |   Val-Test Gap:       4.78%  ✓ Excellent generalization            |
 +====================================================================+
-
-> **Clinical Reasoning Insight:** The 4.78% gap proves the "Devil-to-Rehab" strategy effectively regularizes the model, preventing it from memorizing specific training images and instead learning robust medical features.
 ```
+> **Clinical Reasoning Insight:** The 4.78% gap proves the "Devil-to-Rehab" strategy effectively regularizes the model, preventing it from memorizing specific training images and instead learning robust medical features.
+
 
 ### Sanity Checks / Diagnostics
 
