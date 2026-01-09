@@ -1,182 +1,178 @@
-# evaluate_real.py
 import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Subset
+import matplotlib.pyplot as plt
+import pandas as pd
 import os
 import random
-import numpy as np
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader, Subset
-from torchvision import transforms
 from transformers import AutoTokenizer
+from torchvision import transforms
 
-# Introduce the project module
-from src import config
-from src.dataset_advanced import VQARADSeqDataset
+# === Key Imports ===
+from src.dataset_advanced import VQARADSeqDataset 
 from src.model_advanced import VQAModelAdvanced
+from src import config
 
-# Set up the equipment
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Device Configuration
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def visualize_result(image_tensor, question, answer, pred, is_correct, save_path):
-    """Save the visualized images for use in report presentation."""
-    # Reverse standardization, restoring the image to a form that can be viewed by the naked eye
-    mean = np.array([0.485, 0.456, 0.406])
-    std = np.array([0.229, 0.224, 0.225])
-    img = image_tensor.cpu().numpy().transpose((1, 2, 0)) 
-    img = std * img + mean
-    img = np.clip(img, 0, 1)
+def calculate_metrics(predictions, ground_truths):
+    """Calculate accuracy based on exact string match."""
+    correct = 0
+    total = len(predictions)
+    for p, g in zip(predictions, ground_truths):
+        # Basic cleaning
+        p_clean = str(p).lower().strip().replace('.', '')
+        g_clean = str(g).lower().strip().replace('.', '')
+        if p_clean == g_clean or g_clean in p_clean:
+            correct += 1
+    acc = correct / total if total > 0 else 0
+    return acc
+
+def run_full_evaluation(model_path):
+    print(f"Loading model from: {model_path} ...")
     
-    plt.figure(figsize=(5, 5))
-    plt.imshow(img)
-    plt.axis('off')
-    
-    color = "green" if is_correct else "red"
-    # The title reads "GT (Truth Value) and Pred (Prediction)"
-    title = f"Q: {question}\nGT: {answer}\nPred: {pred}"
-    plt.title(title, color=color, fontsize=10, wrap=True)
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
-
-def main():
-    print(f"{'='*50}")
-    print(f"⚖️ TRUTH REVEALED: REALISTIC EVALUATION")
-    print(f"   Mode: Strict Train/Test Split (No Leakage)")
-    print(f"{'='*50}\n")
-
-    # 1. Initialization
+    # 1. Initialize Tokenizer
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     
-    # During the evaluation, only resizing and standardization will be performed, without any rotation or flipping.
-    eval_transform = transforms.Compose([
+    # 2. Initialize Model
+    # Must match training configuration
+    try:
+        model = VQAModelAdvanced(vocab_size=len(tokenizer.vocab), 
+                                 hidden_dim=config.HIDDEN_DIM, 
+                                 dropout_p=0.3).to(DEVICE)
+    except AttributeError:
+        print("Warning: config.HIDDEN_DIM not found, using default 512.")
+        model = VQAModelAdvanced(vocab_size=len(tokenizer.vocab), 
+                                 hidden_dim=512, 
+                                 dropout_p=0.3).to(DEVICE)
+
+    # 3. Load Weights
+    if not os.path.exists(model_path):
+        print(f"❌ Error: File {model_path} not found!")
+        return
+
+    try:
+        checkpoint = torch.load(model_path, map_location=DEVICE)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            model.load_state_dict(checkpoint)
+        print("✅ Model weights loaded successfully!")
+    except Exception as e:
+        print(f"❌ Failed to load model: {e}")
+        return
+
+    model.eval()
+    
+    # 4. Prepare Test Data
+    print("Preparing Test Dataset...")
+    test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
-
-    print("1️⃣ Loading Full Dataset...")
-    # Here, the full dataset is loaded. The parameter "only_open=False" indicates that we are testing the overall performance.
+    
     full_dataset = VQARADSeqDataset(
         json_path=config.DATA_JSON_PATH,
         img_dir=config.IMG_DIR_PATH,
         tokenizer=tokenizer,
-        transform=eval_transform,
-        only_open=False 
+        transform=test_transform
     )
     
-    # --- Key step: Replicate the random splitting used during training ---
-    dataset_size = len(full_dataset)
-    indices = list(range(dataset_size))
-    
-    # 🚨 It is necessary to use the exact same seed as in main_advanced.py, which is 42.
-    random.seed(42) 
+    # Replicate Split Logic (Seed 42)
+    indices = list(range(len(full_dataset)))
+    random.seed(42)
     random.shuffle(indices)
+    split = int(0.8 * len(full_dataset))
+    test_indices = indices[split:] 
     
-    split = int(0.8 * dataset_size)
+    test_subset = Subset(full_dataset, test_indices)
+    # Batch size must be 1 for easy evaluation logic with generate_answer
+    test_loader = DataLoader(test_subset, batch_size=1, shuffle=False)
     
-    # During training, 80% of the data was used, so for the test, only the remaining 20% must be employed.
-    # This part of the data is something the model has never encountered before!
-    test_indices = indices[split:]
+    print(f"\n[2/4] Starting Full Inference (Test Set Size: {len(test_indices)})...")
     
-    test_dataset = Subset(full_dataset, test_indices)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    
-    print(f"   -> Full Dataset Size: {dataset_size}")
-    print(f"   -> Test Set (Unseen): {len(test_dataset)} samples")
-    print("   ✅ Data Leakage Check: PASSED (Training samples excluded)")
+    predictions = []
+    ground_truths = []
+    images_for_viz = []
+    error_log = []
 
-    # 2. Load the most powerful model
-
-    model_path = "medvqa_resnet_bert_best.pth"
-    
-    print(f"\n2️⃣ Loading Model: {model_path} ...")
-    model = VQAModelAdvanced(
-        vocab_size=tokenizer.vocab_size,
-        embed_dim=config.EMBED_DIM,
-        hidden_dim=config.HIDDEN_DIM,
-        dropout_p=0.3
-    )
-    
-    if os.path.exists(model_path):
-        state_dict = torch.load(model_path, map_location=device)
-        model.load_state_dict(state_dict, strict=False)
-        print("   ✅ Weights Loaded Successfully!")
-    else:
-        print(f"   ❌ Error: {model_path} not found. Please check file name.")
-        return
-
-    model.to(device)
-    model.eval()
-
-    # 3. Start real reasoning
-    closed_correct = 0; closed_total = 0
-    open_correct = 0; open_total = 0
-    
+    # Get special tokens for generation
     bos_idx = tokenizer.cls_token_id
     eos_idx = tokenizer.sep_token_id
     
-    # Create the result folder
-    save_dir = "results_vis_real"
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    
-    print("\n3️⃣ Starting Inference on UNSEEN data...")
-    print("   (This mimics the real exam environment)")
-    
     with torch.no_grad():
-        for i, (images, questions, answers_seq) in enumerate(test_loader):
-            images = images.to(device)
-            questions = questions.to(device)
+        for i, (img, q_ids, a_ids) in enumerate(test_loader):
+            img = img.to(DEVICE)
+            q_ids = q_ids.to(DEVICE)
             
-            # Generate answer
-            gen_ids = model.generate_answer(images, questions, bos_idx, eos_idx)
-            pred_str = tokenizer.decode(gen_ids[0], skip_special_tokens=True)
-            gt_str = tokenizer.decode(answers_seq[0], skip_special_tokens=True)
+            # Decode Question and GT Answer
+            q_text = tokenizer.decode(q_ids[0], skip_special_tokens=True)
+            a_text = tokenizer.decode(a_ids[0], skip_special_tokens=True)
             
-            # Obtain the question text
-            q_text = tokenizer.decode(questions[0], skip_special_tokens=True)
+            # === FIX: Use generate_answer instead of model() ===
+            try:
+                # generate_answer returns a list of lists of token IDs
+                generated_seqs = model.generate_answer(img, q_ids, bos_idx, eos_idx)
+                
+                # Decode the first sequence (since batch_size=1)
+                pred_text = tokenizer.decode(generated_seqs[0], skip_special_tokens=True)
             
-            # Simple normalization comparison
-            def norm(s): return s.lower().replace(" ", "")
-            is_correct = norm(pred_str) == norm(gt_str) or gt_str in pred_str
-            is_closed = norm(gt_str) in ["yes", "no"]
-            
-            # Statistics
-            if is_closed:
-                closed_total += 1
-                if is_correct: closed_correct += 1
-            else:
-                open_total += 1
-                if is_correct: open_correct += 1
-            
-            # Save one picture every 20 pictures, and it is necessary to save the correct cases of the first few open questions.
-            should_save = (i % 20 == 0) or (not is_closed and is_correct and i < 100)
-            if should_save:
-                visualize_result(images[0], q_text, gt_str, pred_str, is_correct, f"{save_dir}/res_{i}.png")
+            except Exception as e:
+                print(f"Error generating answer for ID {i}: {e}")
+                pred_text = "<error>"
 
-    # 4. Calculate the final true score
-    closed_acc = closed_correct / closed_total if closed_total else 0
-    open_acc = open_correct / open_total if open_total else 0
-    total_acc = (closed_correct + open_correct) / (closed_total + open_total) if (closed_total + open_total) else 0
+            # Post-processing
+            pred_text = pred_text.replace('[PAD]', '').strip()
+
+            predictions.append(pred_text)
+            ground_truths.append(a_text)
+            
+            # Log Errors
+            if pred_text.lower() not in a_text.lower():
+                error_log.append({"ID": i, "Question": q_text, "GT": a_text, "Prediction": pred_text})
+            
+            # Save random samples for visualization
+            if len(images_for_viz) < 5 and random.random() < 0.1:
+                images_for_viz.append((img.cpu(), q_text, a_text, pred_text))
+                
+            if i % 50 == 0:
+                print(f"Processed {i}/{len(test_indices)}...")
+
+    # 5. Calculate Metrics
+    print("\n[3/4] Calculating Metrics...")
+    acc = calculate_metrics(predictions, ground_truths)
+    print(f"🎯 Final Accuracy: {acc*100:.2f}%")
     
-    print(f"\n{'='*50}")
-    print(f"📊 REALISTIC FINAL SCORE REPORT (The Truth)")
-    print(f"{'='*50}")
-    print(f"Tested on {len(test_dataset)} unseen images.")
-    print(f"----------------------------------------")
-    print(f"✅ Total Accuracy : {total_acc:.2%}")
-    print(f"🔒 Closed Accuracy: {closed_acc:.2%}")
-    print(f"🔓 Open Accuracy  : {open_acc:.2%}")
-    print(f"----------------------------------------")
-    print(f"Visualization saved to /{save_dir} folder.")
+    # 6. Generate Reports
+    print("\n[4/4] Generating Reports...")
     
-    # Simple evaluation
-    if total_acc > 0.60:
-        print("\n🌟 Evaluation: Excellent! An accuracy rate of over 60% on VQA-RAD is an extremely excellent result.")
-    elif total_acc > 0.50:
-        print("\n👍 Evaluation: Well Done! More than 50% have already reached the passing and stable baseline model standard.。")
-    else:
-        print("\n💪 Evaluation: Keep fighting. The model's generalization ability still has room for improvement.")
+    if error_log:
+        df = pd.DataFrame(error_log)
+        df.to_csv("error_analysis_report.csv", index=False)
+        print(f"📝 Error report saved to: error_analysis_report.csv ({len(error_log)} errors found)")
+        print("Sample Errors:")
+        print(df.head(3))
+        
+    if images_for_viz:
+        plt.figure(figsize=(15, 6))
+        for idx, (img_tensor, q, gt, pred) in enumerate(images_for_viz):
+            img_np = img_tensor.squeeze(0).permute(1, 2, 0).numpy()
+            img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
+            
+            ax = plt.subplot(1, 5, idx+1)
+            ax.imshow(img_np)
+            ax.axis('off')
+            
+            color = 'green' if pred.lower() in gt.lower() else 'red'
+            q_short = (q[:30] + '..') if len(q) > 30 else q
+            
+            ax.set_title(f"Q: {q_short}\nGT: {gt}\nPred: {pred}", color=color, fontsize=9)
+        
+        plt.tight_layout()
+        plt.savefig('final_visual_report.png')
+        print("🖼️  Visual report saved to: final_visual_report.png")
 
 if __name__ == "__main__":
-
-    main()
+    run_full_evaluation('medvqa_ultimate_final.pth')
